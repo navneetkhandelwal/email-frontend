@@ -167,7 +167,7 @@ function App() {
       }
 
       // Get the appropriate API URL
-      const apiUrl = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5000';
+      const apiUrl = process.env.NODE_ENV === 'production' ? 'https://email-backend-tf0l.onrender.com' : 'http://localhost:5000';
 
       // Use server-sent events to get real-time updates
       const eventSource = new EventSource(`${apiUrl}/api/send-emails-sse?email=${emailCredentials.email}`);

@@ -248,6 +248,7 @@ function App() {
                 onChange={handleUserChange}
               >
                 <MenuItem value="navneet">Navneet</MenuItem>
+                <MenuItem value="dhananjay">Dhananjay</MenuItem>
                 <MenuItem value="other">Other</MenuItem>
               </Select>
             </FormControl>

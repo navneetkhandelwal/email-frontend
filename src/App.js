@@ -321,6 +321,7 @@ function App() {
         <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
           User Selection
         </Typography>
+<<<<<<< HEAD
 <Grid container spacing={2} sx={{ mb: 4 }}>
   <Grid item xs={12} md={6}>
     <FormControl fullWidth>
@@ -351,6 +352,26 @@ function App() {
     </FormControl>
   </Grid>
 </Grid>
+=======
+        <Grid container spacing={2} sx={{ mb: 4 }}>
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth>
+              <InputLabel id="user-select-label">Select User</InputLabel>
+              <Select
+                labelId="user-select-label"
+                id="user-select"
+                value={selectedUser}
+                label="Select User"
+                onChange={handleUserChange}
+              >
+                <MenuItem value="navneet">Navneet</MenuItem>
+                <MenuItem value="dhananjay">Dhananjay</MenuItem>
+                <MenuItem value="other">Other</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+        </Grid>
+>>>>>>> 088901d804d6b10fd5003db58f474d7f1932562a
 
         {/* Custom Email Body Section (only shown when "Other" is selected) */}
         {selectedUser === 'other' && (

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box, Button, Container, Paper, TextField, Typography, Grid, 
   Tabs, Tab, Table, TableBody, TableCell, TableContainer, 
@@ -13,13 +13,21 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import axios from 'axios';
 
 function App() {
+  //tab
+  const [tabIndex, setTabIndex] = useState(0);
+
   // Email credentials
   const [emailCredentials, setEmailCredentials] = useState({
     email: '',
     password: ''
   });
+
+  const [emailAudit, setEmailAudit] = useState(null);
   
   // User selection
+  const [userProfile, setUserProfile] = useState(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
+
   const [selectedUser, setSelectedUser] = useState('navneet');
   const [customEmailBody, setCustomEmailBody] = useState('');
   
@@ -49,9 +57,77 @@ function App() {
     logs: []
   });
 
+
+    // Function to fetch user profile
+    const fetchUserProfile = async () => {
+      setIsProfileLoading(true);
+      try {
+        // Get the appropriate API URL (same as your existing pattern)
+        const apiUrl = process.env.NODE_ENV === 'production' 
+          ? 'https://email-backend-tf0l.onrender.com' 
+          : 'http://localhost:5001';
+          
+        const response = await axios.get(`${apiUrl}/api/user-profile`);
+        console.error('Response of user profile:', response);
+        
+        if (response && response.data) {
+          setUserProfile(response.data);
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+        setStatusMessage({ 
+          type: 'error', 
+          message: 'Failed to fetch user profile information'
+        });
+        setOpenSnackbar(true);
+      } finally {
+        setIsProfileLoading(false);
+      }
+    };
+
+    const fetchEmailAudit = async () => {
+      setIsProfileLoading(true);
+      try {
+        // Get the appropriate API URL (same as your existing pattern)
+        const apiUrl = process.env.NODE_ENV === 'production' 
+          ? 'https://email-backend-tf0l.onrender.com' 
+          : 'http://localhost:5001';
+          
+        const response = await axios.get(`${apiUrl}/api/email-audit`);
+        console.error('Response of email audit:', response);
+        
+        if (response && response.data) {
+          setEmailAudit(response.data);
+        }
+      } catch (error) {
+        console.error('Error fetching email audit:', error);
+        setStatusMessage({ 
+          type: 'error', 
+          message: 'Failed to fetch email audit information'
+        });
+        setOpenSnackbar(true);
+      } finally {
+        setIsProfileLoading(false);
+      }
+    };
+
+    const fetchBasicInformation = async () => {
+      fetchUserProfile();
+      fetchEmailAudit();
+    };
+
+ // Fetch profile on component mount
+ useEffect(() => {
+  fetchBasicInformation();
+}, []); // Empty dependency array means this runs once on mount
+
   // Handle tab change
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
+  };
+
+  const handleTabIndexChange = (event, newIndex) => {
+    setTabIndex(newIndex);
   };
 
   // Handle email credentials change
@@ -167,7 +243,7 @@ function App() {
       }
 
       // Get the appropriate API URL
-      const apiUrl = process.env.NODE_ENV === 'production' ? 'https://email-backend-tf0l.onrender.com' : 'http://localhost:5000';
+      const apiUrl = process.env.NODE_ENV === 'production' ? 'https://email-backend-tf0l.onrender.com' : 'http://localhost:5001';
 
       // Use server-sent events to get real-time updates
       const eventSource = new EventSource(`${apiUrl}/api/send-emails-sse?email=${emailCredentials.email}`);
@@ -232,28 +308,49 @@ function App() {
           </Typography>
         </Box>
 
-        {/* User Selection Section */}
+        {/* Tabs Navigation */}
+        <Tabs value={tabIndex} onChange={handleTabIndexChange} indicatorColor="primary" textColor="primary">
+          <Tab label="User Selection" />
+          <Tab label="All Records" />
+        </Tabs>
+
+        {/* Tab Panels */}
+        {tabIndex === 0 && (
+          <Box sx={{ mt: 3 }}>
+           {/* User Selection Section */}
         <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
           User Selection
         </Typography>
-        <Grid container spacing={2} sx={{ mb: 4 }}>
-          <Grid item xs={12} md={6}>
-            <FormControl fullWidth>
-              <InputLabel id="user-select-label">Select User</InputLabel>
-              <Select
-                labelId="user-select-label"
-                id="user-select"
-                value={selectedUser}
-                label="Select User"
-                onChange={handleUserChange}
-              >
-                <MenuItem value="navneet">Navneet</MenuItem>
-                <MenuItem value="dhananjay">Dhananjay</MenuItem>
-                <MenuItem value="other">Other</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
+<Grid container spacing={2} sx={{ mb: 4 }}>
+  <Grid item xs={12} md={6}>
+    <FormControl fullWidth>
+      <InputLabel id="user-select-label">Select User</InputLabel>
+      <Select
+        labelId="user-select-label"
+        id="user-select"
+        value={selectedUser}
+        label="Select User"
+        onChange={handleUserChange}
+        disabled={isProfileLoading}
+      >
+        {userProfile && userProfile.userProfiles && userProfile.userProfiles.length > 0 ? (
+          // Dynamically generate menu items from userProfile
+          userProfile.userProfiles.map((user) => (
+            <MenuItem key={ user.name} value={user.name.toLowerCase()}>
+              {user.name}
+            </MenuItem>
+          ))
+        ) : (
+          // Fallback default options if no user profile or users array
+          <>
+            <MenuItem value="navneet">Navneet</MenuItem>
+            <MenuItem value="other">Other</MenuItem>
+          </>
+        )}
+      </Select>
+    </FormControl>
+  </Grid>
+</Grid>
 
         {/* Custom Email Body Section (only shown when "Other" is selected) */}
         {selectedUser === 'other' && (
@@ -489,6 +586,49 @@ function App() {
             </Paper>
           </Box>
         )}
+          </Box>
+        )}
+
+        {/* Tab Panels */}
+        {tabIndex === 1 && (
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="h6" component="h2">
+              All Records
+            </Typography>
+            <TableContainer component={Paper} sx={{ mt: 2 }}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>UserProfile</TableCell>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Company</TableCell>
+                    <TableCell>Email</TableCell>
+                    <TableCell>Role</TableCell>
+                    <TableCell>Link</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Created At</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {emailAudit.records.map((record) => (
+                    <TableRow key={record.name}>
+                      <TableCell>{record.userProfile}</TableCell>
+                      <TableCell>{record.name}</TableCell>
+                      <TableCell>{record.company}</TableCell>
+                      <TableCell>{record.email}</TableCell>
+                      <TableCell>{record.role}</TableCell>
+                      <TableCell>{record.link}</TableCell>
+                      <TableCell>{record.status}</TableCell>
+                      <TableCell>{record.createdAt}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        )}
+
+        
       </Paper>
 
       {/* Notifications */}

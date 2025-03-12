@@ -606,6 +606,7 @@ function App() {
                     <TableCell>Role</TableCell>
                     <TableCell>Link</TableCell>
                     <TableCell>Status</TableCell>
+                    <TableCell>Created At</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -618,6 +619,7 @@ function App() {
                       <TableCell>{record.role}</TableCell>
                       <TableCell>{record.link}</TableCell>
                       <TableCell>{record.status}</TableCell>
+                      <TableCell>{record.createdAt}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

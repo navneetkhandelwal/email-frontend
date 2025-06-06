@@ -3,7 +3,7 @@ import {
   Box, Button, Container, Paper, TextField, Typography, Grid, 
   Tabs, Tab, Table, TableBody, TableCell, TableContainer, 
   TableHead, TableRow, IconButton, CircularProgress, Snackbar, Alert,
-  FormControl, InputLabel, Select, MenuItem
+  FormControl, InputLabel, Select, MenuItem, Pagination, Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
@@ -57,64 +57,94 @@ function App() {
     logs: []
   });
 
+  // Add this state near other state declarations
+  const [brocode, setBrocode] = useState('');
+  const [isAuditUnlocked, setIsAuditUnlocked] = useState(false);
+  const [brocodeError, setBrocodeError] = useState(false);
 
-    // Function to fetch user profile
-    const fetchUserProfile = async () => {
-      setIsProfileLoading(true);
-      try {
-        // Get the appropriate API URL (same as your existing pattern)
-        const apiUrl = process.env.NODE_ENV === 'production' 
-          ? 'https://email-backend-tf0l.onrender.com' 
-          : 'http://localhost:5001';
-          
-        const response = await axios.get(`${apiUrl}/api/user-profile`);
-        console.error('Response of user profile:', response);
-        
-        if (response && response.data) {
-          setUserProfile(response.data);
-        }
-      } catch (error) {
-        console.error('Error fetching user profile:', error);
-        setStatusMessage({ 
-          type: 'error', 
-          message: 'Failed to fetch user profile information'
-        });
-        setOpenSnackbar(true);
-      } finally {
-        setIsProfileLoading(false);
+  // Add these state declarations near other states
+  const [page, setPage] = useState(1);
+  const [selectedNameFilter, setSelectedNameFilter] = useState('all');
+  const rowsPerPage = 10;
+
+  // Add these new state variables with other states
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [isDeleteEnabled, setIsDeleteEnabled] = useState(false);
+  const [deletePasswordError, setDeletePasswordError] = useState(false);
+  const [showProfileWarning, setShowProfileWarning] = useState(false);
+  const [pendingEmailData, setPendingEmailData] = useState(null);
+
+  // Add this constant for the name options
+  const nameOptions = [
+    { value: 'all', label: 'All Names' },
+    { value: 'navneet', label: 'Navneet Khandelwal' },
+    { value: 'teghdeep', label: 'Teghdeep Kapoor' },
+    { value: 'divyam', label: 'Divyam Shrivastava' },
+    { value: 'dhananjay', label: 'Dhananjay Sharma' },
+    { value: 'akash', label: 'Akash Thakur' },
+    { value: 'avi', label: 'Avi Kapoor' },
+    { value: 'komal', label: 'Komal Shrivastava' },
+    { value: 'pooja', label: 'Pooja Sharma' }
+  ];
+
+  // Function to fetch user profile
+  const fetchUserProfile = async () => {
+    setIsProfileLoading(true);
+    try {
+      // Get the appropriate API URL (same as your existing pattern)
+      const apiUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://email-backend-tf0l.onrender.com' 
+        : 'http://localhost:5001';
+      
+      const response = await axios.get(`${apiUrl}/api/user-profile`);
+      console.error('Response of user profile:', response);
+      
+      if (response && response.data) {
+        setUserProfile(response.data);
       }
-    };
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      setStatusMessage({ 
+        type: 'error', 
+        message: 'Failed to fetch user profile information'
+      });
+      setOpenSnackbar(true);
+    } finally {
+      setIsProfileLoading(false);
+    }
+  };
 
-    const fetchEmailAudit = async () => {
-      setIsProfileLoading(true);
-      try {
-        // Get the appropriate API URL (same as your existing pattern)
-        const apiUrl = process.env.NODE_ENV === 'production' 
-          ? 'https://email-backend-tf0l.onrender.com' 
-          : 'http://localhost:5001';
-          
-        const response = await axios.get(`${apiUrl}/api/email-audit`);
-        console.error('Response of email audit:', response);
-        
-        if (response && response.data) {
-          setEmailAudit(response.data);
-        }
-      } catch (error) {
-        console.error('Error fetching email audit:', error);
-        setStatusMessage({ 
-          type: 'error', 
-          message: 'Failed to fetch email audit information'
-        });
-        setOpenSnackbar(true);
-      } finally {
-        setIsProfileLoading(false);
+  const fetchEmailAudit = async () => {
+    setIsProfileLoading(true);
+    try {
+      // Get the appropriate API URL (same as your existing pattern)
+      const apiUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://email-backend-tf0l.onrender.com' 
+        : 'http://localhost:5001';
+      
+      const response = await axios.get(`${apiUrl}/api/email-audit`);
+      console.error('Response of email audit:', response);
+      
+      if (response && response.data) {
+        setEmailAudit(response.data);
       }
-    };
+    } catch (error) {
+      console.error('Error fetching email audit:', error);
+      setStatusMessage({ 
+        type: 'error', 
+        message: 'Failed to fetch email audit information'
+      });
+      setOpenSnackbar(true);
+    } finally {
+      setIsProfileLoading(false);
+    }
+  };
 
-    const fetchBasicInformation = async () => {
-      fetchUserProfile();
-      fetchEmailAudit();
-    };
+  const fetchBasicInformation = async () => {
+    fetchUserProfile();
+    fetchEmailAudit();
+  };
 
  // Fetch profile on component mount
  useEffect(() => {
@@ -177,75 +207,23 @@ function App() {
     setManualEntries(updatedEntries.length ? updatedEntries : [{ Name: '', Company: '', Email: '', Role: '', Link: '' }]);
   };
 
-  // Submit email sending request
-  const handleSendEmails = async () => {
-    // Validate email credentials
-    if (!emailCredentials.email || !emailCredentials.password) {
-      setStatusMessage({ type: 'error', message: 'Email credentials are required' });
-      setOpenSnackbar(true);
-      return;
+  // Add this new function with other handlers
+  const handleProfileWarningConfirm = () => {
+    setShowProfileWarning(false);
+    if (pendingEmailData) {
+      proceedWithEmailSend(pendingEmailData);
     }
+    setPendingEmailData(null);
+  };
 
-    // Validate custom email body if "other" user is selected
-    if (selectedUser === 'other' && !customEmailBody.trim()) {
-      setStatusMessage({ type: 'error', message: 'Please enter a custom email body' });
-      setOpenSnackbar(true);
-      return;
-    }
-
-    // Validate data based on active tab
-    if (tabValue === 0 && !file) {
-      setStatusMessage({ type: 'error', message: 'Please upload a CSV file' });
-      setOpenSnackbar(true);
-      return;
-    }
-
-    if (tabValue === 1) {
-      const validEntries = manualEntries.filter(entry => 
-        entry.Name && entry.Company && entry.Email && entry.Role
-      );
-      if (validEntries.length === 0) {
-        setStatusMessage({ type: 'error', message: 'Please enter at least one valid entry' });
-        setOpenSnackbar(true);
-        return;
-      }
-    }
-
+  // Add this new function to handle the actual email sending
+  const proceedWithEmailSend = async (formData) => {
     setIsLoading(true);
-    setEmailProgress({
-      total: 0,
-      current: 0,
-      success: 0,
-      failed: 0,
-      logs: []
-    });
-
     try {
-      const formData = new FormData();
-      formData.append('email', emailCredentials.email);
-      formData.append('password', emailCredentials.password);
-      formData.append('userType', selectedUser);
-      
-      if (selectedUser === 'other') {
-        formData.append('customEmailBody', customEmailBody);
-      }
-      
-      if (tabValue === 0) {
-        // CSV upload mode
-        formData.append('file', file);
-        formData.append('mode', 'csv');
-      } else {
-        // Manual entry mode
-        formData.append('data', JSON.stringify(manualEntries.filter(entry => 
-          entry.Name && entry.Company && entry.Email && entry.Role
-        )));
-        formData.append('mode', 'manual');
-      }
+      const apiUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://email-backend-tf0l.onrender.com' 
+        : 'http://localhost:5001';
 
-      // Get the appropriate API URL
-      const apiUrl = process.env.NODE_ENV === 'production' ? 'https://email-backend-tf0l.onrender.com' : 'http://localhost:5001';
-
-      // Use server-sent events to get real-time updates
       const eventSource = new EventSource(`${apiUrl}/api/send-emails-sse?email=${emailCredentials.email}`);
       
       eventSource.onmessage = (event) => {
@@ -280,13 +258,11 @@ function App() {
       };
 
       // Start the process with a POST request
-      axios.post(`${apiUrl}/api/send-emails`, formData, {
+      await axios.post(`${apiUrl}/api/send-emails`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
-      
-      
     } catch (error) {
       setIsLoading(false);
       console.error('Error sending emails:', error);
@@ -295,6 +271,229 @@ function App() {
         message: error.response?.data?.message || 'Error sending emails. Please try again.' 
       });
       setOpenSnackbar(true);
+    }
+  };
+
+  // Modify the handleSendEmails function
+  const handleSendEmails = async () => {
+    // Validate email credentials
+    if (!emailCredentials.email || !emailCredentials.password) {
+      setStatusMessage({ type: 'error', message: 'Email credentials are required' });
+      setOpenSnackbar(true);
+      return;
+    }
+
+    // Validate custom email body if "other" user is selected
+    if (selectedUser === 'other' && !customEmailBody.trim()) {
+      setStatusMessage({ type: 'error', message: 'Please enter a custom email body' });
+      setOpenSnackbar(true);
+      return;
+    }
+
+    // Validate data based on active tab
+    if (tabValue === 0 && !file) {
+      setStatusMessage({ type: 'error', message: 'Please upload a CSV file' });
+      setOpenSnackbar(true);
+      return;
+    }
+
+    if (tabValue === 1) {
+      const validEntries = manualEntries.filter(entry => 
+        entry.Name && entry.Company && entry.Email && entry.Role
+      );
+      if (validEntries.length === 0) {
+        setStatusMessage({ type: 'error', message: 'Please enter at least one valid entry' });
+        setOpenSnackbar(true);
+        return;
+      }
+    }
+
+    setEmailProgress({
+      total: 0,
+      current: 0,
+      success: 0,
+      failed: 0,
+      logs: []
+    });
+
+    const formData = new FormData();
+    formData.append('email', emailCredentials.email);
+    formData.append('password', emailCredentials.password);
+    formData.append('userType', selectedUser);
+    
+    if (selectedUser === 'other') {
+      formData.append('customEmailBody', customEmailBody);
+    }
+    
+    if (tabValue === 0) {
+      formData.append('file', file);
+      formData.append('mode', 'csv');
+    } else {
+      formData.append('data', JSON.stringify(manualEntries.filter(entry => 
+        entry.Name && entry.Company && entry.Email && entry.Role
+      )));
+      formData.append('mode', 'manual');
+    }
+
+    // Check if email contains the selected profile name
+    const nameMap = {
+      navneet: "Navneet",
+      teghdeep: "Teghdeep",
+      divyam: "Divyam",
+      dhananjay: "Dhananjay",
+      akash: "Akash",
+      avi: "Avi",
+      komal: "Komal",
+      pooja: "Pooja"
+    };
+
+    const profileName = nameMap[selectedUser.toLowerCase()];
+    if (profileName && !emailCredentials.email.toLowerCase().includes(profileName.toLowerCase())) {
+      setPendingEmailData(formData);
+      setShowProfileWarning(true);
+      return;
+    }
+
+    // If no warning needed, proceed with sending
+    await proceedWithEmailSend(formData);
+  };
+
+  // Add this function with other handlers
+  const handleBrocodeSubmit = () => {
+    if (brocode === 'tandav') {
+      setIsAuditUnlocked(true);
+      setBrocodeError(false);
+    } else {
+      setBrocodeError(true);
+      setIsAuditUnlocked(false);
+    }
+  };
+
+  // Add these handler functions
+  const handlePageChange = (event, newPage) => {
+    setPage(newPage);
+  };
+
+  const handleNameFilterChange = (event) => {
+    setSelectedNameFilter(event.target.value);
+    setPage(1); // Reset to first page when filter changes
+  };
+
+  // Add this function to filter and paginate records
+  const getFilteredAndPaginatedRecords = (records) => {
+    if (!records) return [];
+    
+    // First apply the name filter
+    const filteredRecords = selectedNameFilter === 'all'
+      ? records
+      : records.filter(record => record.userProfile.toLowerCase() === selectedNameFilter);
+    
+    // Then paginate
+    const startIndex = (page - 1) * rowsPerPage;
+    const endIndex = startIndex + rowsPerPage;
+    
+    return {
+      paginatedRecords: filteredRecords.slice(startIndex, endIndex),
+      totalRecords: filteredRecords.length
+    };
+  };
+
+  // Add this handler function with other handlers
+  const handleResend = (record) => {
+    // Set manual entry data with the record details
+    setManualEntries([{
+      Name: record.name,
+      Company: record.company,
+      Email: record.email,
+      Role: record.role,
+      Link: record.link || ''
+    }]);
+    
+    // Switch to the user selection tab
+    setTabIndex(0);
+    
+    // Switch to manual entry tab
+    setTabValue(1);
+    
+    // Set the user type
+    setSelectedUser(record.userProfile.toLowerCase());
+  };
+
+  // Add this handler function with other handlers
+  const handleDeleteRecord = async (recordId) => {
+    if (!recordId) {
+      setStatusMessage({ 
+        type: 'error', 
+        message: 'Invalid record ID' 
+      });
+      setOpenSnackbar(true);
+      return;
+    }
+
+    try {
+      const apiUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://email-backend-tf0l.onrender.com' 
+        : 'http://localhost:5001';
+
+      // Log the record ID and API URL
+      console.log('Attempting to delete record:', {
+        recordId,
+        apiUrl,
+        deleteUrl: `${apiUrl}/api/email-audit/${recordId}`
+      });
+
+      const response = await axios.delete(`${apiUrl}/api/email-audit/${recordId}`);
+      console.log('Delete response:', response);
+      
+      if (response.data.success) {
+        // Show success message
+        setStatusMessage({ 
+          type: 'success', 
+          message: response.data.message || 'Record deleted successfully' 
+        });
+        setOpenSnackbar(true);
+        
+        // Refresh the audit records
+        await fetchEmailAudit();
+      } else {
+        throw new Error(response.data.message || 'Failed to delete record');
+      }
+    } catch (error) {
+      console.error('Error deleting record:', {
+        error,
+        response: error.response,
+        recordId
+      });
+      setStatusMessage({ 
+        type: 'error', 
+        message: error.response?.data?.message || error.message || 'Error deleting record' 
+      });
+      setOpenSnackbar(true);
+    }
+  };
+
+  // Add this new function with other handlers
+  const handleDeletePassword = () => {
+    // Get current date in IST
+    const now = new Date();
+    const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000)); // Add 5.5 hours for IST
+    const day = String(istTime.getDate()).padStart(2, '0');
+    const month = String(istTime.getMonth() + 1).padStart(2, '0');
+    const year = istTime.getFullYear();
+    const expectedPassword = `${day}${month}${year}`;
+
+    if (deletePassword === expectedPassword) {
+      setIsDeleteEnabled(true);
+      setShowDeleteDialog(false);
+      setDeletePassword('');
+      setDeletePasswordError(false);
+      setStatusMessage({ 
+        type: 'success', 
+        message: 'Delete functionality enabled' 
+      });
+      setOpenSnackbar(true);
+    } else {
+      setDeletePasswordError(true);
     }
   };
 
@@ -448,15 +647,96 @@ function App() {
 
         {/* Manual Entry Tab */}
         <Box sx={{ display: tabValue === 1 ? 'block' : 'none' }}>
-          <TableContainer component={Paper} sx={{ mb: 3 }}>
-            <Table>
+          {/* Mobile View */}
+          <Box sx={{ 
+            display: { xs: 'block', md: 'none' },
+            '& .MuiTextField-root': {
+              mb: 2,
+              '& input': {
+                fontSize: '16px',
+                padding: '12px'
+              }
+            }
+          }}>
+            {manualEntries.map((entry, index) => (
+              <Paper 
+                key={index} 
+                sx={{ 
+                  p: 2, 
+                  mb: 2,
+                  position: 'relative'
+                }}
+              >
+                <IconButton 
+                  color="error" 
+                  onClick={() => removeManualEntry(index)}
+                  disabled={manualEntries.length === 1}
+                  sx={{
+                    position: 'absolute',
+                    right: 8,
+                    top: 8,
+                    padding: '8px'
+                  }}
+                >
+                  <DeleteIcon sx={{ fontSize: '24px' }} />
+                </IconButton>
+
+                <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
+                  Entry #{index + 1}
+                </Typography>
+
+                <TextField
+                  fullWidth
+                  value={entry.Name}
+                  onChange={(e) => handleManualEntryChange(index, 'Name', e.target.value)}
+                  placeholder="Full Name"
+                  label="Name"
+                />
+                <TextField
+                  fullWidth
+                  value={entry.Company}
+                  onChange={(e) => handleManualEntryChange(index, 'Company', e.target.value)}
+                  placeholder="Company Name"
+                  label="Company"
+                />
+                <TextField
+                  fullWidth
+                  value={entry.Email}
+                  onChange={(e) => handleManualEntryChange(index, 'Email', e.target.value)}
+                  placeholder="Email Address"
+                  label="Email"
+                />
+                <TextField
+                  fullWidth
+                  value={entry.Role}
+                  onChange={(e) => handleManualEntryChange(index, 'Role', e.target.value)}
+                  placeholder="Job Role"
+                  label="Role"
+                />
+                <TextField
+                  fullWidth
+                  value={entry.Link}
+                  onChange={(e) => handleManualEntryChange(index, 'Link', e.target.value)}
+                  placeholder="Job Link (Optional)"
+                  label="Link"
+                />
+              </Paper>
+            ))}
+          </Box>
+
+          {/* Desktop View */}
+          <Box sx={{ 
+            display: { xs: 'none', md: 'block' },
+            overflowX: 'auto'
+          }}>
+            <Table sx={{ minWidth: 650 }}>
               <TableHead>
                 <TableRow>
                   <TableCell>Name</TableCell>
                   <TableCell>Company</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Role</TableCell>
-                  <TableCell>Link (Optional)</TableCell>
+                  <TableCell>Link</TableCell>
                   <TableCell>Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -505,7 +785,7 @@ function App() {
                         size="small"
                         value={entry.Link}
                         onChange={(e) => handleManualEntryChange(index, 'Link', e.target.value)}
-                        placeholder="Job Link (Optional)"
+                        placeholder="Job Link"
                       />
                     </TableCell>
                     <TableCell>
@@ -521,13 +801,20 @@ function App() {
                 ))}
               </TableBody>
             </Table>
-          </TableContainer>
+          </Box>
+
           <Button 
             variant="outlined" 
             startIcon={<AddIcon />} 
             onClick={addManualEntry}
+            sx={{
+              mt: 2,
+              py: { xs: 1.5, sm: 1 },
+              px: { xs: 3, sm: 2 },
+              fontSize: { xs: '16px', sm: '14px' }
+            }}
           >
-            Add Row
+            Add Entry
           </Button>
         </Box>
 
@@ -593,38 +880,194 @@ function App() {
         {tabIndex === 1 && (
           <Box sx={{ mt: 3 }}>
             <Typography variant="h6" component="h2">
-              All Records
+              Audit Logs
             </Typography>
-            <TableContainer component={Paper} sx={{ mt: 2 }}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>UserProfile</TableCell>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Company</TableCell>
-                    <TableCell>Email</TableCell>
-                    <TableCell>Role</TableCell>
-                    <TableCell>Link</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Created At</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {emailAudit.records.map((record) => (
-                    <TableRow key={record.name}>
-                      <TableCell>{record.userProfile}</TableCell>
-                      <TableCell>{record.name}</TableCell>
-                      <TableCell>{record.company}</TableCell>
-                      <TableCell>{record.email}</TableCell>
-                      <TableCell>{record.role}</TableCell>
-                      <TableCell>{record.link}</TableCell>
-                      <TableCell>{record.status}</TableCell>
-                      <TableCell>{record.createdAt}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+
+            {!isAuditUnlocked ? (
+              <Box sx={{ 
+                maxWidth: 400, 
+                mx: 'auto', 
+                mt: 4,
+                p: 3,
+                borderRadius: 2,
+                bgcolor: 'background.paper',
+                boxShadow: 3
+              }}>
+                <Typography variant="h6" sx={{ mb: 2, textAlign: 'center' }}>
+                  🔒 Enter Brocode to Access Audit Logs
+                </Typography>
+                <TextField
+                  fullWidth
+                  type="password"
+                  label="Brocode"
+                  value={brocode}
+                  onChange={(e) => setBrocode(e.target.value)}
+                  error={brocodeError}
+                  helperText={brocodeError ? "Incorrect brocode" : ""}
+                  sx={{ mb: 2 }}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleBrocodeSubmit();
+                    }
+                  }}
+                />
+                <Button
+                  fullWidth
+                  variant="contained"
+                  onClick={handleBrocodeSubmit}
+                  sx={{ 
+                    py: 1.5,
+                    bgcolor: 'primary.main',
+                    '&:hover': {
+                      bgcolor: 'primary.dark',
+                    }
+                  }}
+                >
+                  Unlock Audit Logs
+                </Button>
+              </Box>
+            ) : (
+              <Box sx={{ mt: 2 }}>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="subtitle1" sx={{ color: 'success.main' }}>
+                    🔓 Audit Logs Unlocked
+                  </Typography>
+                  <Button 
+                    variant="outlined" 
+                    color="primary"
+                    size="small"
+                    onClick={() => {
+                      setIsAuditUnlocked(false);
+                      setBrocode('');
+                      setBrocodeError(false);
+                    }}
+                  >
+                    Lock Audit Logs
+                  </Button>
+                </Box>
+
+                {/* Filter Section */}
+                <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <FormControl sx={{ minWidth: 200 }}>
+                    <InputLabel id="name-filter-label">Filter by Name</InputLabel>
+                    <Select
+                      labelId="name-filter-label"
+                      value={selectedNameFilter}
+                      label="Filter by Name"
+                      onChange={handleNameFilterChange}
+                    >
+                      {nameOptions.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>UserProfile</TableCell>
+                        <TableCell>Name</TableCell>
+                        <TableCell>Company</TableCell>
+                        <TableCell>Email</TableCell>
+                        <TableCell>Role</TableCell>
+                        <TableCell>Link</TableCell>
+                        <TableCell>Status</TableCell>
+                        <TableCell>Created At</TableCell>
+                        <TableCell>Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {emailAudit?.records ? (
+                        getFilteredAndPaginatedRecords(emailAudit.records).paginatedRecords.map((record) => (
+                          <TableRow key={record._id || record.name}>
+                            <TableCell>{record.userProfile}</TableCell>
+                            <TableCell>{record.name}</TableCell>
+                            <TableCell>{record.company}</TableCell>
+                            <TableCell>{record.email}</TableCell>
+                            <TableCell>{record.role}</TableCell>
+                            <TableCell>{record.link}</TableCell>
+                            <TableCell>
+                              <Box sx={{ 
+                                display: 'inline-flex', 
+                                alignItems: 'center',
+                                color: record.status === 'success' ? 'success.main' : 'error.main',
+                                fontWeight: 500
+                              }}>
+                                {record.status === 'success' ? '✓' : '✗'} {record.status}
+                              </Box>
+                            </TableCell>
+                            <TableCell>
+                              {new Date(record.createdAt).toLocaleString()}
+                            </TableCell>
+                            <TableCell>
+                              <Box sx={{ display: 'flex', gap: 1 }}>
+                                <Button
+                                  variant="outlined"
+                                  size="small"
+                                  color="primary"
+                                  onClick={() => handleResend(record)}
+                                  startIcon={<EmailIcon />}
+                                  sx={{
+                                    minWidth: 'auto',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  Resend
+                                </Button>
+                                {isDeleteEnabled && (
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={() => handleDeleteRecord(record._id)}
+                                  >
+                                    <DeleteIcon />
+                                  </IconButton>
+                                )}
+                              </Box>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={9} align="center">
+                            No records found
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+
+                {/* Pagination */}
+                {emailAudit?.records && (
+                  <Box sx={{ 
+                    mt: 2, 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    px: 2
+                  }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Showing {Math.min(rowsPerPage, getFilteredAndPaginatedRecords(emailAudit.records).totalRecords)} of {getFilteredAndPaginatedRecords(emailAudit.records).totalRecords} entries
+                    </Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                      <Pagination
+                        count={Math.ceil(getFilteredAndPaginatedRecords(emailAudit.records).totalRecords / rowsPerPage)}
+                        page={page}
+                        onChange={handlePageChange}
+                        color="primary"
+                        showFirstButton
+                        showLastButton
+                      />
+                    </Box>
+                  </Box>
+                )}
+              </Box>
+            )}
           </Box>
         )}
 
@@ -646,6 +1089,108 @@ function App() {
           {statusMessage.message}
         </Alert>
       </Snackbar>
+
+      {/* Hidden button in top-right corner - Only show on audit page after brocode */}
+      {tabIndex === 1 && isAuditUnlocked && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top: 0,
+            right: 0,
+            width: '20px',
+            height: '20px',
+            cursor: 'pointer',
+            zIndex: 9999
+          }}
+          onClick={() => setShowDeleteDialog(true)}
+        />
+      )}
+
+      {/* Password Dialog */}
+      <Dialog 
+        open={showDeleteDialog} 
+        onClose={() => {
+          setShowDeleteDialog(false);
+          setDeletePassword('');
+          setDeletePasswordError(false);
+        }}
+      >
+        <DialogTitle>Enter Password</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Password"
+            type="password"
+            fullWidth
+            variant="outlined"
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+            error={deletePasswordError}
+            helperText={deletePasswordError ? "Incorrect password" : ""}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') {
+                handleDeletePassword();
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setShowDeleteDialog(false);
+            setDeletePassword('');
+            setDeletePasswordError(false);
+          }}>
+            Cancel
+          </Button>
+          <Button onClick={handleDeletePassword}>
+            Submit
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add Profile Warning Dialog */}
+      <Dialog
+        open={showProfileWarning}
+        onClose={() => {
+          setShowProfileWarning(false);
+          setPendingEmailData(null);
+        }}
+      >
+        <DialogTitle>Profile Name Mismatch</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            The email address you entered doesn't contain the selected profile name:
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            • Email: {emailCredentials.email}
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            • Selected Profile: {selectedUser}
+          </Typography>
+          <Typography variant="body1">
+            Do you want to proceed anyway?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => {
+              setShowProfileWarning(false);
+              setPendingEmailData(null);
+            }}
+            color="error"
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleProfileWarningConfirm}
+            variant="contained"
+            color="primary"
+          >
+            Send Anyway
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }

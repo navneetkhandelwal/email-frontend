@@ -30,6 +30,12 @@ function App() {
 
   const [selectedUser, setSelectedUser] = useState('navneet');
   const [customEmailBody, setCustomEmailBody] = useState('');
+  const [currentResumeLink, setCurrentResumeLink] = useState('');
+  const [newResumeLink, setNewResumeLink] = useState('');
+  const [isResumeLinkLoading, setIsResumeLinkLoading] = useState(false);
+  const [isResumeTabUnlocked, setIsResumeTabUnlocked] = useState(false);
+  const [resumeBrocode, setResumeBrocode] = useState('');
+  const [resumeBrocodeError, setResumeBrocodeError] = useState(false);
   
   // Tab state
   const [tabValue, setTabValue] = useState(0);
@@ -78,15 +84,20 @@ function App() {
   // Add this constant for the name options
   const nameOptions = [
     { value: 'all', label: 'All Names' },
-    { value: 'navneet', label: 'Navneet Khandelwal' },
-    { value: 'teghdeep', label: 'Teghdeep Kapoor' },
-    { value: 'divyam', label: 'Divyam Shrivastava' },
-    { value: 'dhananjay', label: 'Dhananjay Sharma' },
-    { value: 'akash', label: 'Akash Thakur' },
-    { value: 'avi', label: 'Avi Kapoor' },
-    { value: 'komal', label: 'Komal Shrivastava' },
-    { value: 'pooja', label: 'Pooja Sharma' }
+    { value: 'navneet', label: 'Navneet' },
+    { value: 'teghdeep', label: 'Teghdeep' },
+    { value: 'divyam', label: 'Divyam' },
+    { value: 'dhananjay', label: 'Dhananjay' },
+    { value: 'akash', label: 'Akash' },
+    { value: 'avi', label: 'Avi' },
+    { value: 'komal', label: 'Komal' },
+    { value: 'pooja', label: 'Pooja' }
   ];
+
+  // Add these helper functions at the top of the file, after the imports
+  const capitalizeFirstLetter = (string) => {
+    return string.charAt(0).toUpperCase() + string.slice(1);
+  };
 
   // Function to fetch user profile
   const fetchUserProfile = async () => {
@@ -170,7 +181,8 @@ function App() {
 
   // Handle user selection change
   const handleUserChange = (e) => {
-    setSelectedUser(e.target.value);
+    const newUserType = e.target.value;
+    setSelectedUser(newUserType);
   };
 
   // Handle custom email body change
@@ -497,6 +509,127 @@ function App() {
     }
   };
 
+  // Add function to fetch resume link
+  const fetchResumeLink = async (userType) => {
+    setIsResumeLinkLoading(true);
+    try {
+      const apiUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://email-backend-tf0l.onrender.com' 
+        : 'http://localhost:5001';
+
+      const response = await axios.get(`${apiUrl}/api/get-resume-link/${userType}`);
+      console.log('Resume link response:', response.data);
+      
+      if (response.data.success) {
+        const link = response.data.resumeLink;
+        console.log('Setting current resume link:', link);
+        setCurrentResumeLink(link);
+      } else {
+        console.log('No resume link found in response');
+        setCurrentResumeLink('');
+      }
+    } catch (error) {
+      console.error('Error fetching resume link:', error);
+      setStatusMessage({ 
+        type: 'error', 
+        message: error.response?.data?.message || error.message || 'Error fetching resume link' 
+      });
+      setOpenSnackbar(true);
+      setCurrentResumeLink('');
+    } finally {
+      setIsResumeLinkLoading(false);
+    }
+  };
+
+  // Modify handleResumeLinkUpdate to clear the input after successful update
+  const handleResumeLinkUpdate = async () => {
+    if (!selectedUser || !newResumeLink) {
+      setStatusMessage({ type: 'error', message: 'Please select a user and enter a resume link' });
+      setOpenSnackbar(true);
+      return;
+    }
+
+    try {
+      const apiUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://email-backend-tf0l.onrender.com' 
+        : 'http://localhost:5001';
+
+      const response = await axios.post(`${apiUrl}/api/update-resume-link`, {
+        userType: selectedUser,
+        resumeLink: newResumeLink
+      });
+
+      if (response.data.success) {
+        setCurrentResumeLink(newResumeLink);
+        setNewResumeLink(''); // Clear the input field after successful update
+        setStatusMessage({ 
+          type: 'success', 
+          message: 'Resume link updated successfully' 
+        });
+      } else {
+        throw new Error(response.data.message || 'Failed to update resume link');
+      }
+    } catch (error) {
+      setStatusMessage({ 
+        type: 'error', 
+        message: error.response?.data?.message || error.message || 'Error updating resume link' 
+      });
+    }
+    setOpenSnackbar(true);
+  };
+
+  // Add useEffect to fetch initial resume link
+  useEffect(() => {
+    if (selectedUser !== 'other') {
+      fetchResumeLink(selectedUser);
+    } else {
+      setCurrentResumeLink(''); // Clear resume link for 'other' user
+    }
+  }, [selectedUser]); // Run when selectedUser changes
+
+  // Add handler for resume tab brocode
+  const handleResumeBrocodeSubmit = () => {
+    if (resumeBrocode === 'nottandav') {
+      setIsResumeTabUnlocked(true);
+      setResumeBrocodeError(false);
+      // Automatically select Navneet's profile
+      setSelectedUser('navneet');
+      fetchResumeLink('navneet');
+    } else {
+      setResumeBrocodeError(true);
+      setIsResumeTabUnlocked(false);
+    }
+  };
+
+  // Add this helper function after the imports
+  const convertGoogleDriveUrl = (url) => {
+    if (!url) return null;
+    
+    // Remove the @ prefix if it exists
+    url = url.startsWith('@') ? url.substring(1) : url;
+    
+    // Check if it's a Google Drive URL
+    if (url.includes('drive.google.com')) {
+      // Handle different Google Drive URL formats
+      let fileId = '';
+      
+      if (url.includes('/file/d/')) {
+        // Format: https://drive.google.com/file/d/[fileId]/view
+        fileId = url.split('/file/d/')[1].split('/')[0];
+      } else if (url.includes('id=')) {
+        // Format: https://drive.google.com/open?id=[fileId]
+        fileId = url.split('id=')[1].split('&')[0];
+      }
+      
+      if (fileId) {
+        return `https://drive.google.com/file/d/${fileId}/preview`;
+      }
+    }
+    
+    // Return the original URL if it's not a Google Drive URL
+    return url;
+  };
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
@@ -510,374 +643,554 @@ function App() {
         {/* Tabs Navigation */}
         <Tabs value={tabIndex} onChange={handleTabIndexChange} indicatorColor="primary" textColor="primary">
           <Tab label="User Selection" />
+          <Tab label="Resume Management" />
           <Tab label="All Records" />
         </Tabs>
 
         {/* Tab Panels */}
         {tabIndex === 0 && (
           <Box sx={{ mt: 3 }}>
-           {/* User Selection Section */}
-        <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
-          User Selection
-        </Typography>
-<Grid container spacing={2} sx={{ mb: 4 }}>
-  <Grid item xs={12} md={6}>
-    <FormControl fullWidth>
-      <InputLabel id="user-select-label">Select User</InputLabel>
-      <Select
-        labelId="user-select-label"
-        id="user-select"
-        value={selectedUser}
-        label="Select User"
-        onChange={handleUserChange}
-        disabled={isProfileLoading}
-      >
-        {userProfile && userProfile.userProfiles && userProfile.userProfiles.length > 0 ? (
-          // Dynamically generate menu items from userProfile
-          userProfile.userProfiles.map((user) => (
-            <MenuItem key={ user.name} value={user.name.toLowerCase()}>
-              {user.name}
-            </MenuItem>
-          ))
-        ) : (
-          // Fallback default options if no user profile or users array
-          <>
-            <MenuItem value="navneet">Navneet</MenuItem>
-            <MenuItem value="other">Other</MenuItem>
-          </>
-        )}
-      </Select>
-    </FormControl>
-  </Grid>
-</Grid>
-
-        {/* Custom Email Body Section (only shown when "Other" is selected) */}
-        {selectedUser === 'other' && (
-          <Box sx={{ mb: 4 }}>
+            {/* User Selection Section */}
             <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
-              Custom Email Body
+              User Selection
             </Typography>
-            <TextField
-              fullWidth
-              multiline
-              rows={10}
-              label="Custom Email Body"
-              value={customEmailBody}
-              onChange={handleCustomEmailBodyChange}
-              variant="outlined"
-              placeholder="Enter your custom email body HTML here. Start with <body> and end with </body>"
-              helperText="Start with <body> tag and end with </body> tag. Include all HTML content for the email."
-            />
-          </Box>
-        )}
+            <Grid container spacing={2} sx={{ mb: 4 }}>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel id="user-select-label">Select User</InputLabel>
+                  <Select
+                    labelId="user-select-label"
+                    id="user-select"
+                    value={selectedUser}
+                    label="Select User"
+                    onChange={handleUserChange}
+                    disabled={isProfileLoading}
+                  >
+                    {userProfile && userProfile.userProfiles && userProfile.userProfiles.length > 0 ? (
+                      userProfile.userProfiles.map((user) => (
+                        <MenuItem key={user.name} value={user.name.toLowerCase()}>
+                          {capitalizeFirstLetter(user.name)}
+                        </MenuItem>
+                      ))
+                    ) : (
+                      <>
+                        <MenuItem value="navneet">Navneet</MenuItem>
+                        <MenuItem value="teghdeep">Teghdeep</MenuItem>
+                        <MenuItem value="divyam">Divyam</MenuItem>
+                        <MenuItem value="dhananjay">Dhananjay</MenuItem>
+                        <MenuItem value="akash">Akash</MenuItem>
+                        <MenuItem value="avi">Avi</MenuItem>
+                        <MenuItem value="komal">Komal</MenuItem>
+                        <MenuItem value="pooja">Pooja</MenuItem>
+                        <MenuItem value="other">Other</MenuItem>
+                      </>
+                    )}
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
 
-        {/* Email Credentials Section */}
-        <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
-          Email Credentials
-        </Typography>
-        <Grid container spacing={2} sx={{ mb: 4 }}>
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="Your Email"
-              name="email"
-              value={emailCredentials.email}
-              onChange={handleCredentialsChange}
-              variant="outlined"
-              placeholder="your.email@gmail.com"
-              required
-            />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="App Password"
-              name="password"
-              value={emailCredentials.password}
-              onChange={handleCredentialsChange}
-              variant="outlined"
-              type="password"
-              placeholder="Your Google App Password"
-              required
-              helperText="Use Google App Password, not your regular password"
-            />
-          </Grid>
-        </Grid>
-
-        {/* Data Input Tabs */}
-        <Box sx={{ mb: 3 }}>
-          <Tabs value={tabValue} onChange={handleTabChange}>
-            <Tab label="Upload CSV" icon={<UploadFileIcon />} iconPosition="start" />
-            <Tab label="Manual Entry" icon={<AddIcon />} iconPosition="start" />
-          </Tabs>
-        </Box>
-
-        {/* CSV Upload Tab */}
-        <Box sx={{ display: tabValue === 0 ? 'block' : 'none' }}>
-          <Box sx={{ mb: 3, p: 3, border: '2px dashed #ccc', borderRadius: 2, textAlign: 'center' }}>
-            <input
-              accept=".csv,.xlsx,.xls"
-              style={{ display: 'none' }}
-              id="csv-file-upload"
-              type="file"
-              onChange={handleFileChange}
-            />
-            <label htmlFor="csv-file-upload">
-              <Button
-                variant="contained"
-                component="span"
-                startIcon={<UploadFileIcon />}
-              >
-                Upload CSV File
-              </Button>
-            </label>
-            <Box sx={{ mt: 2 }}>
-              {fileName ? (
-                <Typography variant="body1">
-                  Selected file: {fileName}
+            {/* Custom Email Body Section (only shown when "Other" is selected) */}
+            {selectedUser === 'other' && (
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
+                  Custom Email Body
                 </Typography>
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  Supported formats: CSV, XLSX, XLS
-                </Typography>
-              )}
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={10}
+                  label="Custom Email Body"
+                  value={customEmailBody}
+                  onChange={handleCustomEmailBodyChange}
+                  variant="outlined"
+                  placeholder="Enter your custom email body HTML here. Start with <body> and end with </body>"
+                  helperText="Start with <body> tag and end with </body> tag. Include all HTML content for the email."
+                />
+              </Box>
+            )}
+
+            {/* Email Credentials Section */}
+            <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
+              Email Credentials
+            </Typography>
+            <Grid container spacing={2} sx={{ mb: 4 }}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Your Email"
+                  name="email"
+                  value={emailCredentials.email}
+                  onChange={handleCredentialsChange}
+                  variant="outlined"
+                  placeholder="your.email@gmail.com"
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="App Password"
+                  name="password"
+                  value={emailCredentials.password}
+                  onChange={handleCredentialsChange}
+                  variant="outlined"
+                  type="password"
+                  placeholder="Your Google App Password"
+                  required
+                  helperText="Use Google App Password, not your regular password"
+                />
+              </Grid>
+            </Grid>
+
+            {/* Data Input Tabs */}
+            <Box sx={{ mb: 3 }}>
+              <Tabs value={tabValue} onChange={handleTabChange}>
+                <Tab label="Upload CSV" icon={<UploadFileIcon />} iconPosition="start" />
+                <Tab label="Manual Entry" icon={<AddIcon />} iconPosition="start" />
+              </Tabs>
             </Box>
-          </Box>
-        </Box>
 
-        {/* Manual Entry Tab */}
-        <Box sx={{ display: tabValue === 1 ? 'block' : 'none' }}>
-          {/* Mobile View */}
-          <Box sx={{ 
-            display: { xs: 'block', md: 'none' },
-            '& .MuiTextField-root': {
-              mb: 2,
-              '& input': {
-                fontSize: '16px',
-                padding: '12px'
-              }
-            }
-          }}>
-            {manualEntries.map((entry, index) => (
-              <Paper 
-                key={index} 
-                sx={{ 
-                  p: 2, 
+            {/* CSV Upload Tab */}
+            <Box sx={{ display: tabValue === 0 ? 'block' : 'none' }}>
+              <Box sx={{ mb: 3, p: 3, border: '2px dashed #ccc', borderRadius: 2, textAlign: 'center' }}>
+                <input
+                  accept=".csv,.xlsx,.xls"
+                  style={{ display: 'none' }}
+                  id="csv-file-upload"
+                  type="file"
+                  onChange={handleFileChange}
+                />
+                <label htmlFor="csv-file-upload">
+                  <Button
+                    variant="contained"
+                    component="span"
+                    startIcon={<UploadFileIcon />}
+                  >
+                    Upload CSV File
+                  </Button>
+                </label>
+                <Box sx={{ mt: 2 }}>
+                  {fileName ? (
+                    <Typography variant="body1">
+                      Selected file: {fileName}
+                    </Typography>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      Supported formats: CSV, XLSX, XLS
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            </Box>
+
+            {/* Manual Entry Tab */}
+            <Box sx={{ display: tabValue === 1 ? 'block' : 'none' }}>
+              {/* Mobile View */}
+              <Box sx={{ 
+                display: { xs: 'block', md: 'none' },
+                '& .MuiTextField-root': {
                   mb: 2,
-                  position: 'relative'
+                  '& input': {
+                    fontSize: '16px',
+                    padding: '12px'
+                  }
+                }
+              }}>
+                {manualEntries.map((entry, index) => (
+                  <Paper 
+                    key={index} 
+                    sx={{ 
+                      p: 2, 
+                      mb: 2,
+                      position: 'relative'
+                    }}
+                  >
+                    <IconButton 
+                      color="error" 
+                      onClick={() => removeManualEntry(index)}
+                      disabled={manualEntries.length === 1}
+                      sx={{
+                        position: 'absolute',
+                        right: 8,
+                        top: 8,
+                        padding: '8px'
+                      }}
+                    >
+                      <DeleteIcon sx={{ fontSize: '24px' }} />
+                    </IconButton>
+
+                    <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
+                      Entry #{index + 1}
+                    </Typography>
+
+                    <TextField
+                      fullWidth
+                      value={entry.Name}
+                      onChange={(e) => handleManualEntryChange(index, 'Name', e.target.value)}
+                      placeholder="Full Name"
+                      label="Name"
+                    />
+                    <TextField
+                      fullWidth
+                      value={entry.Company}
+                      onChange={(e) => handleManualEntryChange(index, 'Company', e.target.value)}
+                      placeholder="Company Name"
+                      label="Company"
+                    />
+                    <TextField
+                      fullWidth
+                      value={entry.Email}
+                      onChange={(e) => handleManualEntryChange(index, 'Email', e.target.value)}
+                      placeholder="Email Address"
+                      label="Email"
+                    />
+                    <TextField
+                      fullWidth
+                      value={entry.Role}
+                      onChange={(e) => handleManualEntryChange(index, 'Role', e.target.value)}
+                      placeholder="Job Role"
+                      label="Role"
+                    />
+                    <TextField
+                      fullWidth
+                      value={entry.Link}
+                      onChange={(e) => handleManualEntryChange(index, 'Link', e.target.value)}
+                      placeholder="Job Link (Optional)"
+                      label="Link"
+                    />
+                  </Paper>
+                ))}
+              </Box>
+
+              {/* Desktop View */}
+              <Box sx={{ 
+                display: { xs: 'none', md: 'block' },
+                overflowX: 'auto'
+              }}>
+                <Table sx={{ minWidth: 650 }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Name</TableCell>
+                      <TableCell>Company</TableCell>
+                      <TableCell>Email</TableCell>
+                      <TableCell>Role</TableCell>
+                      <TableCell>Link</TableCell>
+                      <TableCell>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {manualEntries.map((entry, index) => (
+                      <TableRow key={index}>
+                        <TableCell>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            value={entry.Name}
+                            onChange={(e) => handleManualEntryChange(index, 'Name', e.target.value)}
+                            placeholder="Full Name"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            value={entry.Company}
+                            onChange={(e) => handleManualEntryChange(index, 'Company', e.target.value)}
+                            placeholder="Company Name"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            value={entry.Email}
+                            onChange={(e) => handleManualEntryChange(index, 'Email', e.target.value)}
+                            placeholder="Email Address"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            value={entry.Role}
+                            onChange={(e) => handleManualEntryChange(index, 'Role', e.target.value)}
+                            placeholder="Job Role"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            value={entry.Link}
+                            onChange={(e) => handleManualEntryChange(index, 'Link', e.target.value)}
+                            placeholder="Job Link"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <IconButton 
+                            color="error" 
+                            onClick={() => removeManualEntry(index)}
+                            disabled={manualEntries.length === 1}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
+
+              <Button 
+                variant="outlined" 
+                startIcon={<AddIcon />} 
+                onClick={addManualEntry}
+                sx={{
+                  mt: 2,
+                  py: { xs: 1.5, sm: 1 },
+                  px: { xs: 3, sm: 2 },
+                  fontSize: { xs: '16px', sm: '14px' }
                 }}
               >
-                <IconButton 
-                  color="error" 
-                  onClick={() => removeManualEntry(index)}
-                  disabled={manualEntries.length === 1}
-                  sx={{
-                    position: 'absolute',
-                    right: 8,
-                    top: 8,
-                    padding: '8px'
+                Add Entry
+              </Button>
+            </Box>
+
+            {/* Send Button */}
+            <Box sx={{ mt: 4, textAlign: 'center' }}>
+              <Button
+                variant="contained"
+                color="primary"
+                size="large"
+                startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <EmailIcon />}
+                onClick={handleSendEmails}
+                disabled={isLoading}
+                sx={{ py: 1.5, px: 4 }}
+              >
+                {isLoading ? 'Sending...' : 'Send Emails'}
+              </Button>
+            </Box>
+
+            {/* Progress Section */}
+            {isLoading && (
+              <Box sx={{ mt: 4, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  Email Sending Progress
+                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                  <Typography variant="body1">
+                    Progress: {emailProgress.current}/{emailProgress.total} 
+                    ({emailProgress.total > 0 ? Math.round((emailProgress.current / emailProgress.total) * 100) : 0}%)
+                  </Typography>
+                  <Typography variant="body1">
+                    Success: {emailProgress.success} | Failed: {emailProgress.failed}
+                  </Typography>
+                </Box>
+                <Box sx={{ width: '100%', mb: 2 }}>
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={emailProgress.total > 0 ? (emailProgress.current / emailProgress.total) * 100 : 0} 
+                  />
+                </Box>
+                <Paper 
+                  variant="outlined" 
+                  sx={{ 
+                    p: 1, 
+                    maxHeight: '200px', 
+                    overflow: 'auto', 
+                    bgcolor: '#000', 
+                    color: '#0f0',
+                    fontFamily: 'monospace' 
                   }}
                 >
-                  <DeleteIcon sx={{ fontSize: '24px' }} />
-                </IconButton>
-
-                <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'bold' }}>
-                  Entry #{index + 1}
-                </Typography>
-
-                <TextField
-                  fullWidth
-                  value={entry.Name}
-                  onChange={(e) => handleManualEntryChange(index, 'Name', e.target.value)}
-                  placeholder="Full Name"
-                  label="Name"
-                />
-                <TextField
-                  fullWidth
-                  value={entry.Company}
-                  onChange={(e) => handleManualEntryChange(index, 'Company', e.target.value)}
-                  placeholder="Company Name"
-                  label="Company"
-                />
-                <TextField
-                  fullWidth
-                  value={entry.Email}
-                  onChange={(e) => handleManualEntryChange(index, 'Email', e.target.value)}
-                  placeholder="Email Address"
-                  label="Email"
-                />
-                <TextField
-                  fullWidth
-                  value={entry.Role}
-                  onChange={(e) => handleManualEntryChange(index, 'Role', e.target.value)}
-                  placeholder="Job Role"
-                  label="Role"
-                />
-                <TextField
-                  fullWidth
-                  value={entry.Link}
-                  onChange={(e) => handleManualEntryChange(index, 'Link', e.target.value)}
-                  placeholder="Job Link (Optional)"
-                  label="Link"
-                />
-              </Paper>
-            ))}
-          </Box>
-
-          {/* Desktop View */}
-          <Box sx={{ 
-            display: { xs: 'none', md: 'block' },
-            overflowX: 'auto'
-          }}>
-            <Table sx={{ minWidth: 650 }}>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Company</TableCell>
-                  <TableCell>Email</TableCell>
-                  <TableCell>Role</TableCell>
-                  <TableCell>Link</TableCell>
-                  <TableCell>Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {manualEntries.map((entry, index) => (
-                  <TableRow key={index}>
-                    <TableCell>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        value={entry.Name}
-                        onChange={(e) => handleManualEntryChange(index, 'Name', e.target.value)}
-                        placeholder="Full Name"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        value={entry.Company}
-                        onChange={(e) => handleManualEntryChange(index, 'Company', e.target.value)}
-                        placeholder="Company Name"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        value={entry.Email}
-                        onChange={(e) => handleManualEntryChange(index, 'Email', e.target.value)}
-                        placeholder="Email Address"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        value={entry.Role}
-                        onChange={(e) => handleManualEntryChange(index, 'Role', e.target.value)}
-                        placeholder="Job Role"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        value={entry.Link}
-                        onChange={(e) => handleManualEntryChange(index, 'Link', e.target.value)}
-                        placeholder="Job Link"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <IconButton 
-                        color="error" 
-                        onClick={() => removeManualEntry(index)}
-                        disabled={manualEntries.length === 1}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Box>
-
-          <Button 
-            variant="outlined" 
-            startIcon={<AddIcon />} 
-            onClick={addManualEntry}
-            sx={{
-              mt: 2,
-              py: { xs: 1.5, sm: 1 },
-              px: { xs: 3, sm: 2 },
-              fontSize: { xs: '16px', sm: '14px' }
-            }}
-          >
-            Add Entry
-          </Button>
-        </Box>
-
-        {/* Send Button */}
-        <Box sx={{ mt: 4, textAlign: 'center' }}>
-          <Button
-            variant="contained"
-            color="primary"
-            size="large"
-            startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <EmailIcon />}
-            onClick={handleSendEmails}
-            disabled={isLoading}
-            sx={{ py: 1.5, px: 4 }}
-          >
-            {isLoading ? 'Sending...' : 'Send Emails'}
-          </Button>
-        </Box>
-
-        {/* Progress Section */}
-        {isLoading && (
-          <Box sx={{ mt: 4, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Email Sending Progress
-            </Typography>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="body1">
-                Progress: {emailProgress.current}/{emailProgress.total} 
-                ({emailProgress.total > 0 ? Math.round((emailProgress.current / emailProgress.total) * 100) : 0}%)
-              </Typography>
-              <Typography variant="body1">
-                Success: {emailProgress.success} | Failed: {emailProgress.failed}
-              </Typography>
-            </Box>
-            <Box sx={{ width: '100%', mb: 2 }}>
-              <LinearProgress 
-                variant="determinate" 
-                value={emailProgress.total > 0 ? (emailProgress.current / emailProgress.total) * 100 : 0} 
-              />
-            </Box>
-            <Paper 
-              variant="outlined" 
-              sx={{ 
-                p: 1, 
-                maxHeight: '200px', 
-                overflow: 'auto', 
-                bgcolor: '#000', 
-                color: '#0f0',
-                fontFamily: 'monospace' 
-              }}
-            >
-              {emailProgress.logs.map((log, index) => (
-                <Typography key={index} variant="body2" component="div" sx={{ fontSize: '0.85rem' }}>
-                  {log}
-                </Typography>
-              ))}
-            </Paper>
+                  {emailProgress.logs.map((log, index) => (
+                    <Typography key={index} variant="body2" component="div" sx={{ fontSize: '0.85rem' }}>
+                      {log}
+                    </Typography>
+                  ))}
+                </Paper>
+              </Box>
+            )}
           </Box>
         )}
+
+        {/* Resume Management Tab */}
+        {tabIndex === 1 && (
+          <Box sx={{ mt: 3 }}>
+            {!isResumeTabUnlocked ? (
+              <Box sx={{ 
+                maxWidth: 400, 
+                mx: 'auto', 
+                mt: 4,
+                p: 3,
+                borderRadius: 2,
+                bgcolor: 'background.paper',
+                boxShadow: 3
+              }}>
+                <Typography variant="h6" sx={{ mb: 2, textAlign: 'center' }}>
+                  🔒 Enter Brocode to Access Resume Management
+                </Typography>
+                <TextField
+                  fullWidth
+                  type="password"
+                  label="Brocode"
+                  value={resumeBrocode}
+                  onChange={(e) => setResumeBrocode(e.target.value)}
+                  error={resumeBrocodeError}
+                  helperText={resumeBrocodeError ? "Incorrect brocode" : ""}
+                  sx={{ mb: 2 }}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleResumeBrocodeSubmit();
+                    }
+                  }}
+                />
+                <Button
+                  fullWidth
+                  variant="contained"
+                  onClick={handleResumeBrocodeSubmit}
+                  sx={{ 
+                    py: 1.5,
+                    bgcolor: 'primary.main',
+                    '&:hover': {
+                      bgcolor: 'primary.dark',
+                    }
+                  }}
+                >
+                  Unlock Resume Management
+                </Button>
+              </Box>
+            ) : (
+              <Box>
+                <Typography variant="h6" component="h2" sx={{ mb: 3 }}>
+                  Resume Management
+                </Typography>
+                
+                <Box sx={{ mb: 4 }}>
+                  <FormControl fullWidth sx={{ mb: 3 }}>
+                    <InputLabel id="resume-profile-select-label">Select Profile</InputLabel>
+                    <Select
+                      labelId="resume-profile-select-label"
+                      id="resume-profile-select"
+                      value={selectedUser}
+                      label="Select Profile"
+                      onChange={handleUserChange}
+                    >
+                      {userProfile && userProfile.userProfiles && userProfile.userProfiles.length > 0 ? (
+                        userProfile.userProfiles.map((user) => (
+                          <MenuItem key={user.name} value={user.name.toLowerCase()}>
+                            {capitalizeFirstLetter(user.name)}
+                          </MenuItem>
+                        ))
+                      ) : (
+                        <>
+                          <MenuItem value="navneet">Navneet</MenuItem>
+                          <MenuItem value="teghdeep">Teghdeep</MenuItem>
+                          <MenuItem value="divyam">Divyam</MenuItem>
+                          <MenuItem value="dhananjay">Dhananjay</MenuItem>
+                          <MenuItem value="akash">Akash</MenuItem>
+                          <MenuItem value="avi">Avi</MenuItem>
+                          <MenuItem value="komal">Komal</MenuItem>
+                          <MenuItem value="pooja">Pooja</MenuItem>
+                        </>
+                      )}
+                    </Select>
+                  </FormControl>
+
+                  {/* Current Resume Link Display */}
+                  <Box sx={{ 
+                    p: 2, 
+                    bgcolor: '#f5f5f5', 
+                    borderRadius: 1,
+                    border: '1px solid #e0e0e0',
+                    mb: 3
+                  }}>
+                    <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                      Current Resume Link
+                    </Typography>
+                    {isResumeLinkLoading ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <CircularProgress size={20} />
+                        <Typography variant="body2">Loading...</Typography>
+                      </Box>
+                    ) : currentResumeLink ? (
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          wordBreak: 'break-all',
+                          fontFamily: 'monospace',
+                          bgcolor: '#ffffff',
+                          p: 1,
+                          borderRadius: 0.5
+                        }}
+                      >
+                        {currentResumeLink.startsWith('@') ? currentResumeLink.substring(1) : currentResumeLink}
+                      </Typography>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                        No resume link set
+                      </Typography>
+                    )}
+                  </Box>
+
+                  {/* Update Resume Link Field */}
+                  <Box sx={{ display: 'flex', gap: 1, mb: 4 }}>
+                    <TextField
+                      fullWidth
+                      label="New Resume Link"
+                      value={newResumeLink}
+                      onChange={(e) => setNewResumeLink(e.target.value)}
+                      variant="outlined"
+                      placeholder="@https://drive.google.com/..."
+                      helperText="Enter new resume link to update"
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={handleResumeLinkUpdate}
+                      sx={{ height: 56 }}
+                      disabled={isResumeLinkLoading}
+                    >
+                      Update
+                    </Button>
+                  </Box>
+
+                  {/* PDF Preview Section */}
+                  {currentResumeLink && (
+                    <Box sx={{ mt: 4 }}>
+                      <Typography variant="h6" component="h3" sx={{ mb: 2 }}>
+                        Resume Preview
+                      </Typography>
+                      <Paper 
+                        elevation={3} 
+                        sx={{ 
+                          width: '100%',
+                          height: '800px',
+                          overflow: 'hidden',
+                          borderRadius: 2,
+                          bgcolor: '#f5f5f5'
+                        }}
+                      >
+                        <iframe
+                          src={convertGoogleDriveUrl(currentResumeLink)}
+                          width="100%"
+                          height="100%"
+                          frameBorder="0"
+                          title="Resume Preview"
+                          loading="lazy"
+                          style={{ backgroundColor: '#fff' }}
+                        />
+                      </Paper>
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+            )}
           </Box>
         )}
 
         {/* Tab Panels */}
-        {tabIndex === 1 && (
+        {tabIndex === 2 && (
           <Box sx={{ mt: 3 }}>
             <Typography variant="h6" component="h2">
               Audit Logs
@@ -984,7 +1297,7 @@ function App() {
                       {emailAudit?.records ? (
                         getFilteredAndPaginatedRecords(emailAudit.records).paginatedRecords.map((record) => (
                           <TableRow key={record._id || record.name}>
-                            <TableCell>{record.userProfile}</TableCell>
+                            <TableCell>{capitalizeFirstLetter(record.userProfile)}</TableCell>
                             <TableCell>{record.name}</TableCell>
                             <TableCell>{record.company}</TableCell>
                             <TableCell>{record.email}</TableCell>
@@ -1091,7 +1404,7 @@ function App() {
       </Snackbar>
 
       {/* Hidden button in top-right corner - Only show on audit page after brocode */}
-      {tabIndex === 1 && isAuditUnlocked && (
+      {tabIndex === 2 && isAuditUnlocked && (
         <Box
           sx={{
             position: 'fixed',

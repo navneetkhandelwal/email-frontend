@@ -185,6 +185,14 @@ function App() {
         return;
       }
 
+      // Show sending status
+      setIsLoading(true);
+      setStatusMessage({
+        type: 'info',
+        message: `Sending follow-up email to ${record.email}...`
+      });
+      setOpenSnackbar(true);
+
       const apiUrl = process.env.NODE_ENV === 'production' 
         ? 'https://email-backend-tf0l.onrender.com' 
         : 'http://localhost:5001';
@@ -197,9 +205,10 @@ function App() {
       });
 
       if (response.data.success) {
+        setIsLoading(false);
         setStatusMessage({ 
           type: 'success', 
-          message: 'Follow-up email sent successfully' 
+          message: `Successfully sent follow-up email to ${record.email}` 
         });
         setShowFollowUpDialog(false);
         setFollowUpEmailCredentials({ email: '', password: '' });
@@ -207,6 +216,9 @@ function App() {
       }
     } catch (error) {
       console.error('Follow-up error:', error.response?.data || error);
+      
+      // Always clear loading state
+      setIsLoading(false);
       
       // Check if it's an authentication error
       if (error.response?.status === 401 || 
@@ -220,7 +232,7 @@ function App() {
       } else {
         setStatusMessage({ 
           type: 'error', 
-          message: error.response?.data?.message || 'Error sending follow-up' 
+          message: error.response?.data?.message || `Failed to send follow-up email: ${error.message}` 
         });
       }
       setOpenSnackbar(true);

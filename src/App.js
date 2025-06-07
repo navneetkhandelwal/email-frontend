@@ -2,19 +2,42 @@ import React, { useState, useEffect } from 'react';
 import {
   Box, Button, Container, Paper, TextField, Typography, Grid, 
   Tabs, Tab, Table, TableBody, TableCell, TableContainer, 
-  TableHead, TableRow, IconButton, CircularProgress, Snackbar, Alert,
-  FormControl, InputLabel, Select, MenuItem, Pagination, Dialog, DialogTitle, DialogContent, DialogActions, Divider
+  TableHead, TableRow, IconButton, CircularProgress, LinearProgress, Snackbar, Alert,
+  FormControl, InputLabel, Select, MenuItem, Pagination, Dialog, DialogTitle, 
+  DialogContent, DialogActions, Divider, Checkbox
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import EmailIcon from '@mui/icons-material/Email';
 import DashboardIcon from '@mui/icons-material/Dashboard';
+import ReplyIcon from '@mui/icons-material/Reply';
+import SendIcon from '@mui/icons-material/Send';
 import axios from 'axios';
 
 function App() {
   //tab
   const [tabIndex, setTabIndex] = useState(0);
+  const [showManualDialog, setShowManualDialog] = useState(false);
+
+  const handleEmailError = (error) => {
+    // Check if it's an authentication error
+    if (error.response?.status === 401 || 
+        error.response?.data?.error?.code === 'EAUTH' ||
+        (error.response?.data?.error?.response || '').includes('Authentication Required')) {
+      setShowAppPasswordHelp(true);
+      setStatusMessage({ 
+        type: 'error', 
+        message: 'Gmail authentication failed. Please use an App Password.' 
+      });
+    } else {
+      setStatusMessage({ 
+        type: 'error', 
+        message: error.response?.data?.message || 'Error sending emails' 
+      });
+    }
+    setOpenSnackbar(true);
+  };
 
   // Email credentials
   const [emailCredentials, setEmailCredentials] = useState({
@@ -95,6 +118,284 @@ function App() {
 
   // Add this state for template tabs
   const [templateTabIndex, setTemplateTabIndex] = useState(0);
+
+  // Add these new states after other state declarations
+  const [showFollowUpDialog, setShowFollowUpDialog] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [followUpDateRange, setFollowUpDateRange] = useState({
+    startDate: '',
+    endDate: ''
+  });
+  const [showBulkFollowUpDialog, setShowBulkFollowUpDialog] = useState(false);
+  const [followUpEmailCredentials, setFollowUpEmailCredentials] = useState({
+    email: '',
+    password: ''
+  });
+
+  // Add these new states after other state declarations
+  const [followUpTemplate, setFollowUpTemplate] = useState('');
+  const [isFollowUpTemplateLoading, setIsFollowUpTemplateLoading] = useState(false);
+
+  // Add this state for showing help text
+  const [showAppPasswordHelp, setShowAppPasswordHelp] = useState(false);
+
+  // Add these state declarations near other states
+  const [showBulkReplyDialog, setShowBulkReplyDialog] = useState(false);
+  const [bulkReplyDateRange, setBulkReplyDateRange] = useState({
+    startDate: '',
+    endDate: ''
+  });
+  const [bulkReplyProfile, setBulkReplyProfile] = useState('all');
+
+  // Add this handler function
+  const handleToggleReplyReceived = async (record) => {
+    try {
+      const apiUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://email-backend-tf0l.onrender.com' 
+        : 'http://localhost:5001';
+
+      const response = await axios.post(`${apiUrl}/api/toggle-reply-received/${record._id}`);
+      
+      if (response.data.success) {
+        setStatusMessage({ 
+          type: 'success', 
+          message: 'Reply status updated successfully' 
+        });
+        setOpenSnackbar(true);
+        await fetchEmailAudit();
+      }
+    } catch (error) {
+      setStatusMessage({ 
+        type: 'error', 
+        message: error.response?.data?.message || 'Error updating reply status' 
+      });
+      setOpenSnackbar(true);
+    }
+  };
+
+  // Add this handler function
+  const handleSendFollowUp = async (record) => {
+    try {
+      if (!followUpEmailCredentials.email || !followUpEmailCredentials.password) {
+        setStatusMessage({ 
+          type: 'error', 
+          message: 'Email credentials are required' 
+        });
+        setOpenSnackbar(true);
+        return;
+      }
+
+      const apiUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://email-backend-tf0l.onrender.com' 
+        : 'http://localhost:5001';
+
+      const response = await axios.post(`${apiUrl}/api/send-followup`, {
+        recordId: record._id,
+        userType: record.userProfile,
+        email: followUpEmailCredentials.email,
+        password: followUpEmailCredentials.password
+      });
+
+      if (response.data.success) {
+        setStatusMessage({ 
+          type: 'success', 
+          message: 'Follow-up email sent successfully' 
+        });
+        setShowFollowUpDialog(false);
+        setFollowUpEmailCredentials({ email: '', password: '' });
+        await fetchEmailAudit();
+      }
+    } catch (error) {
+      console.error('Follow-up error:', error.response?.data || error);
+      
+      // Check if it's an authentication error
+      if (error.response?.status === 401 || 
+          error.response?.data?.error?.code === 'EAUTH' ||
+          (error.response?.data?.error?.response || '').includes('Authentication Required')) {
+        setShowAppPasswordHelp(true);
+        setStatusMessage({ 
+          type: 'error', 
+          message: 'Gmail authentication failed. Please use an App Password.' 
+        });
+      } else {
+        setStatusMessage({ 
+          type: 'error', 
+          message: error.response?.data?.message || 'Error sending follow-up' 
+        });
+      }
+      setOpenSnackbar(true);
+    }
+  };
+
+  // Add this handler function
+  const handleSendBulkFollowUp = async () => {
+    try {
+      if (!followUpEmailCredentials.email || !followUpEmailCredentials.password) {
+        setStatusMessage({ 
+          type: 'error', 
+          message: 'Email credentials are required' 
+        });
+        setOpenSnackbar(true);
+        return;
+      }
+
+      if (!followUpDateRange.startDate || !followUpDateRange.endDate) {
+        setStatusMessage({ 
+          type: 'error', 
+          message: 'Date range is required' 
+        });
+        setOpenSnackbar(true);
+        return;
+      }
+
+      if (!selectedUser) {
+        setStatusMessage({
+          type: 'error',
+          message: 'Please select a user profile'
+        });
+        setOpenSnackbar(true);
+        return;
+      }
+
+      // Check if email contains profile name
+      if (!followUpEmailCredentials.email.toLowerCase().includes(selectedUser.toLowerCase())) {
+        setShowProfileWarning(true);
+        setPendingEmailData({
+          type: 'bulk',
+          data: {
+            startDate: followUpDateRange.startDate,
+            endDate: followUpDateRange.endDate,
+            email: followUpEmailCredentials.email,
+            password: followUpEmailCredentials.password,
+            userType: selectedUser
+          }
+        });
+        return;
+      }
+
+      await sendBulkFollowUpEmails();
+    } catch (error) {
+      handleEmailError(error);
+    }
+  };
+
+  const sendBulkFollowUpEmails = async () => {
+    try {
+      const apiUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://email-backend-tf0l.onrender.com' 
+        : 'http://localhost:5001';
+
+      // Set up SSE connection for progress updates BEFORE sending request
+      const eventSource = new EventSource(`${apiUrl}/api/send-emails-sse?email=${followUpEmailCredentials.email}`);
+      
+      // Initialize progress
+      setEmailProgress({
+        total: 0,
+        current: 0,
+        success: 0,
+        failed: 0,
+        logs: ['Starting follow-up process...']
+      });
+
+      // Set up event handlers
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('SSE Event:', data);
+
+          if (data.type === 'progress') {
+            console.log('Progress update:', data); // Debug log
+            setEmailProgress(prev => ({
+              ...prev,
+              total: data.total,
+              current: data.current,
+              success: data.success,
+              failed: data.failed
+            }));
+          } else if (data.type === 'log') {
+            setEmailProgress(prev => ({
+              ...prev,
+              logs: [...prev.logs, data.message]
+            }));
+          } else if (data.type === 'complete') {
+            console.log('Complete event:', data); // Debug log
+            eventSource.close();
+            setIsLoading(false);
+            setStatusMessage({ 
+              type: 'success', 
+              message: `Successfully sent ${data.success} follow-up emails (${data.failed} failed)` 
+            });
+            setShowBulkFollowUpDialog(false);
+            setFollowUpEmailCredentials({ email: '', password: '' });
+            setFollowUpDateRange({ startDate: '', endDate: '' });
+            fetchEmailAudit();
+            setOpenSnackbar(true);
+          }
+        } catch (error) {
+          console.error('Error parsing SSE message:', error);
+          eventSource.close();
+          setIsLoading(false);
+          setStatusMessage({ 
+            type: 'error', 
+            message: 'Error processing server updates' 
+          });
+          setOpenSnackbar(true);
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        console.error('SSE Error:', error);
+        eventSource.close();
+        setIsLoading(false);
+        setStatusMessage({ 
+          type: 'error', 
+          message: 'Lost connection to server' 
+        });
+        setOpenSnackbar(true);
+      };
+
+      setIsLoading(true);
+      
+      // Send the request to start the bulk follow-up process
+      const response = await axios.post(`${apiUrl}/api/send-bulk-followup`, {
+        startDate: followUpDateRange.startDate,
+        endDate: followUpDateRange.endDate,
+        email: followUpEmailCredentials.email,
+        password: followUpEmailCredentials.password,
+        userType: selectedUser
+      });
+
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to start bulk follow-up process');
+      }
+
+      // Wait for completion
+      await new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          if (!isLoading) {
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }, 1000);
+      });
+
+    } catch (error) {
+      handleEmailError(error);
+      setIsLoading(false);
+    }
+  };
+
+  const handleProfileWarningConfirm = async () => {
+    setShowProfileWarning(false);
+    if (pendingEmailData) {
+      if (pendingEmailData.type === 'bulk') {
+        await sendBulkFollowUpEmails();
+      } else {
+        await handleSendFollowUp(pendingEmailData.data);
+      }
+      setPendingEmailData(null);
+    }
+  };
 
   // Add handler for template tab change
   const handleTemplateTabChange = (event, newValue) => {
@@ -897,63 +1198,63 @@ function App() {
     return string.charAt(0).toUpperCase() + string.slice(1);
   };
 
-  // Function to fetch user profile
-  const fetchUserProfile = async () => {
-    setIsProfileLoading(true);
-    try {
-      // Get the appropriate API URL (same as your existing pattern)
-      const apiUrl = process.env.NODE_ENV === 'production' 
-        ? 'https://email-backend-tf0l.onrender.com' 
-        : 'http://localhost:5001';
-      
-      const response = await axios.get(`${apiUrl}/api/user-profile`);
-      console.error('Response of user profile:', response);
-      
-      if (response && response.data) {
-        setUserProfile(response.data);
+    // Function to fetch user profile
+    const fetchUserProfile = async () => {
+      setIsProfileLoading(true);
+      try {
+        // Get the appropriate API URL (same as your existing pattern)
+        const apiUrl = process.env.NODE_ENV === 'production' 
+          ? 'https://email-backend-tf0l.onrender.com' 
+          : 'http://localhost:5001';
+          
+        const response = await axios.get(`${apiUrl}/api/user-profile`);
+        console.error('Response of user profile:', response);
+        
+        if (response && response.data) {
+          setUserProfile(response.data);
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+        setStatusMessage({ 
+          type: 'error', 
+          message: 'Failed to fetch user profile information'
+        });
+        setOpenSnackbar(true);
+      } finally {
+        setIsProfileLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
-      setStatusMessage({ 
-        type: 'error', 
-        message: 'Failed to fetch user profile information'
-      });
-      setOpenSnackbar(true);
-    } finally {
-      setIsProfileLoading(false);
-    }
-  };
+    };
 
-  const fetchEmailAudit = async () => {
-    setIsProfileLoading(true);
-    try {
-      // Get the appropriate API URL (same as your existing pattern)
-      const apiUrl = process.env.NODE_ENV === 'production' 
-        ? 'https://email-backend-tf0l.onrender.com' 
-        : 'http://localhost:5001';
-      
-      const response = await axios.get(`${apiUrl}/api/email-audit`);
-      console.error('Response of email audit:', response);
-      
-      if (response && response.data) {
-        setEmailAudit(response.data);
+    const fetchEmailAudit = async () => {
+      setIsProfileLoading(true);
+      try {
+        // Get the appropriate API URL (same as your existing pattern)
+        const apiUrl = process.env.NODE_ENV === 'production' 
+          ? 'https://email-backend-tf0l.onrender.com' 
+          : 'http://localhost:5001';
+          
+        const response = await axios.get(`${apiUrl}/api/email-audit`);
+        console.error('Response of email audit:', response);
+        
+        if (response && response.data) {
+          setEmailAudit(response.data);
+        }
+      } catch (error) {
+        console.error('Error fetching email audit:', error);
+        setStatusMessage({ 
+          type: 'error', 
+          message: 'Failed to fetch email audit information'
+        });
+        setOpenSnackbar(true);
+      } finally {
+        setIsProfileLoading(false);
       }
-    } catch (error) {
-      console.error('Error fetching email audit:', error);
-      setStatusMessage({ 
-        type: 'error', 
-        message: 'Failed to fetch email audit information'
-      });
-      setOpenSnackbar(true);
-    } finally {
-      setIsProfileLoading(false);
-    }
-  };
+    };
 
-  const fetchBasicInformation = async () => {
-    fetchUserProfile();
-    fetchEmailAudit();
-  };
+    const fetchBasicInformation = async () => {
+      fetchUserProfile();
+      fetchEmailAudit();
+    };
 
  // Fetch profile on component mount
  useEffect(() => {
@@ -1017,14 +1318,7 @@ function App() {
     setManualEntries(updatedEntries.length ? updatedEntries : [{ Name: '', Company: '', Email: '', Role: '', Link: '' }]);
   };
 
-  // Add this new function with other handlers
-  const handleProfileWarningConfirm = () => {
-    setShowProfileWarning(false);
-    if (pendingEmailData) {
-      proceedWithEmailSend(pendingEmailData);
-    }
-    setPendingEmailData(null);
-  };
+
 
   // Add this new function to handle the actual email sending
   const proceedWithEmailSend = async (formData) => {
@@ -1118,54 +1412,179 @@ function App() {
       }
     }
 
+    setIsLoading(true);
+    // Initialize with the correct total right away
+    const validEntries = manualEntries.filter(entry => 
+      entry.Name && entry.Company && entry.Email && entry.Role
+    );
     setEmailProgress({
-      total: 0,
+      total: validEntries.length,
       current: 0,
       success: 0,
       failed: 0,
       logs: []
     });
 
-    const formData = new FormData();
-    formData.append('email', emailCredentials.email);
-    formData.append('password', emailCredentials.password);
-    formData.append('userType', selectedUser);
-    
-    if (selectedUser === 'other') {
-      formData.append('customEmailBody', customEmailBody);
-    }
-    
-    if (tabValue === 0) {
-      formData.append('file', file);
-      formData.append('mode', 'csv');
-    } else {
-      formData.append('data', JSON.stringify(manualEntries.filter(entry => 
-        entry.Name && entry.Company && entry.Email && entry.Role
-      )));
-      formData.append('mode', 'manual');
-    }
+    try {
+      const apiUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://email-backend-tf0l.onrender.com' 
+        : 'http://localhost:5001';
 
-    // Check if email contains the selected profile name
-    const nameMap = {
-      navneet: "Navneet",
-      teghdeep: "Teghdeep",
-      divyam: "Divyam",
-      dhananjay: "Dhananjay",
-      akash: "Akash",
-      avi: "Avi",
-      komal: "Komal",
-      pooja: "Pooja"
-    };
+      const requestData = {
+        email: emailCredentials.email,
+        password: emailCredentials.password,
+        userType: selectedUser,
+        mode: tabValue === 0 ? 'csv' : 'manual',
+        data: JSON.stringify(validEntries)
+      };
+      
+      if (selectedUser === 'other') {
+        requestData.customEmailBody = customEmailBody;
+      }
 
-    const profileName = nameMap[selectedUser.toLowerCase()];
-    if (profileName && !emailCredentials.email.toLowerCase().includes(profileName.toLowerCase())) {
-      setPendingEmailData(formData);
-      setShowProfileWarning(true);
-      return;
+      // Set up SSE connection for progress updates BEFORE sending request
+      const eventSource = new EventSource(`${apiUrl}/api/send-emails-sse?email=${emailCredentials.email}`);
+      
+      // Add initial log message
+      setEmailProgress(prev => ({
+        ...prev,
+        logs: [...prev.logs, `Starting email sending process for ${validEntries.length} recipients`]
+      }));
+
+      if (tabValue === 0 && file) {
+        const formData = new FormData();
+        Object.entries(requestData).forEach(([key, value]) => {
+          formData.append(key, value);
+        });
+        formData.append('file', file);
+        
+        const response = await axios.post(`${apiUrl}/api/send-emails`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        
+        if (response.data.success) {
+          setStatusMessage({ 
+            type: 'success', 
+            message: 'Started sending emails from CSV file' 
+          });
+          setOpenSnackbar(true);
+        }
+      } else {
+        // For manual entries, send as JSON
+        const response = await axios.post(`${apiUrl}/api/send-emails`, requestData, {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (response.data.success) {
+          setStatusMessage({ 
+            type: 'success', 
+            message: 'Started sending manual emails' 
+          });
+          setOpenSnackbar(true);
+        }
+      }
+      
+      eventSource.onmessage = (event) => {
+        try {
+        const data = JSON.parse(event.data);
+          console.log('SSE Event:', data); // For debugging
+
+          // Extract numbers from the message if it's a log
+          if (data.type === 'log') {
+            const message = data.message;
+            // Check for the specific success message format
+            const successMatch = message.match(/(\d+)\/(\d+): Successfully sent email to/);
+            if (successMatch) {
+              const current = parseInt(successMatch[1]);
+              console.log('Success match:', current); // Debug log
+          setEmailProgress(prev => ({
+            ...prev,
+                current: current,
+                success: current,
+                logs: [...prev.logs, message]
+              }));
+            } else if (message.includes('failed')) {
+              // Extract failed count from message if possible
+              const failedMatch = message.match(/(\d+)\/(\d+):/);
+              const current = failedMatch ? parseInt(failedMatch[1]) : (prev => prev.current + 1);
+          setEmailProgress(prev => ({
+            ...prev,
+                current: typeof current === 'number' ? current : prev.current + 1,
+                failed: prev.failed + 1,
+                logs: [...prev.logs, message]
+              }));
+            } else {
+              // Just add the log
+              setEmailProgress(prev => ({
+                ...prev,
+                logs: [...prev.logs, message]
+              }));
+            }
+            
+            // Debug log the current state
+            console.log('Current progress state:', {
+              message,
+              type: data.type,
+              isSuccess: message.includes('Successfully sent email to')
+            });
+          }
+          // Handle explicit progress updates
+          else if (data.type === 'progress' && data.current !== undefined) {
+            const newCurrent = parseInt(data.current);
+            const newSuccess = parseInt(data.success || 0);
+            const newFailed = parseInt(data.failed || 0);
+            
+            console.log('Progress update:', { newCurrent, newSuccess, newFailed }); // Debug log
+            
+            setEmailProgress(prev => {
+              const updatedProgress = {
+                ...prev,
+                current: Math.max(prev.current, newCurrent),
+                success: Math.max(prev.success, newSuccess),
+                failed: Math.max(prev.failed, newFailed)
+              };
+              console.log('Updated progress:', updatedProgress); // Debug log
+              return updatedProgress;
+            });
+        } else if (data.type === 'complete') {
+          eventSource.close();
+          setIsLoading(false);
+            setStatusMessage({ 
+              type: 'success', 
+              message: `Completed sending emails. Success: ${data.success}, Failed: ${data.failed}` 
+            });
+          setOpenSnackbar(true);
+          }
+        } catch (error) {
+          console.error('Error processing SSE message:', error);
+        }
+      };
+
+      eventSource.onopen = () => {
+        console.log('SSE Connection opened');
+      };
+
+      eventSource.onerror = (error) => {
+        console.error('SSE Error:', error);
+        eventSource.close();
+        setIsLoading(false);
+        setStatusMessage({ type: 'error', message: 'Error during email sending process' });
+        setOpenSnackbar(true);
+      };
+      
+    } catch (error) {
+      setIsLoading(false);
+      console.error('Error sending emails:', error);
+      setStatusMessage({ 
+        type: 'error', 
+        message: error.response?.data?.message || 'Error sending emails. Please try again.' 
+      });
+      setOpenSnackbar(true);
     }
-
-    // If no warning needed, proceed with sending
-    await proceedWithEmailSend(formData);
   };
 
   // Add this function with other handlers
@@ -1586,6 +2005,114 @@ function App() {
     setOpenSnackbar(true);
   };
 
+  // Add this function to fetch follow-up template
+  const fetchFollowUpTemplate = async (userType) => {
+    setIsFollowUpTemplateLoading(true);
+    try {
+      const apiUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://email-backend-tf0l.onrender.com' 
+        : 'http://localhost:5001';
+
+      const response = await axios.get(`${apiUrl}/api/followup-template/${userType}`);
+      
+      if (response.data.success) {
+        setFollowUpTemplate(response.data.template || '');
+      }
+    } catch (error) {
+      console.error('Error fetching follow-up template:', error);
+      setStatusMessage({ 
+        type: 'error', 
+        message: 'Failed to fetch follow-up template' 
+      });
+      setOpenSnackbar(true);
+    } finally {
+      setIsFollowUpTemplateLoading(false);
+    }
+  };
+
+  // Add this function to save follow-up template
+  const handleSaveFollowUpTemplate = async () => {
+    try {
+      const apiUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://email-backend-tf0l.onrender.com' 
+        : 'http://localhost:5001';
+
+      const response = await axios.post(`${apiUrl}/api/followup-template`, {
+        userProfile: selectedUser,
+        template: followUpTemplate
+      });
+      
+      if (response.data.success) {
+        setStatusMessage({ 
+          type: 'success', 
+          message: 'Follow-up template saved successfully' 
+        });
+        setOpenSnackbar(true);
+      }
+    } catch (error) {
+      setStatusMessage({ 
+        type: 'error', 
+        message: error.response?.data?.message || 'Error saving follow-up template' 
+      });
+      setOpenSnackbar(true);
+    }
+  };
+
+  // Add this effect to fetch template when user changes
+  useEffect(() => {
+    if (selectedUser) {
+      fetchFollowUpTemplate(selectedUser);
+    }
+  }, [selectedUser]);
+
+  // Add this effect to sync resume link in template
+  useEffect(() => {
+    if (followUpTemplate && currentResumeLink) {
+      const updatedTemplate = followUpTemplate.replace(
+        /https:\/\/drive\.google\.com\/[^\s"')]+/g,
+        currentResumeLink
+      );
+      if (updatedTemplate !== followUpTemplate) {
+        setFollowUpTemplate(updatedTemplate);
+      }
+    }
+  }, [currentResumeLink]);
+
+  // Add this handler function with other handlers
+  const handleBulkReplyMark = async () => {
+    try {
+      const apiUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://email-backend-tf0l.onrender.com' 
+        : 'http://localhost:5001';
+
+      const response = await axios.post(`${apiUrl}/api/bulk-mark-reply`, {
+        startDate: bulkReplyDateRange.startDate,
+        endDate: bulkReplyDateRange.endDate,
+        userProfile: bulkReplyProfile
+      });
+      
+      if (response.data.success) {
+        setStatusMessage({ 
+          type: 'success', 
+          message: `Successfully marked ${response.data.updatedCount} emails as replied` 
+        });
+        setOpenSnackbar(true);
+        setShowBulkReplyDialog(false);
+        // Reset form
+        setBulkReplyDateRange({ startDate: '', endDate: '' });
+        setBulkReplyProfile('all');
+        // Refresh the audit records
+        await fetchEmailAudit();
+      }
+    } catch (error) {
+      setStatusMessage({ 
+        type: 'error', 
+        message: error.response?.data?.message || 'Error marking replies' 
+      });
+      setOpenSnackbar(true);
+    }
+  };
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
@@ -1627,31 +2154,31 @@ function App() {
         {/* Tab Panels */}
         {tabIndex === 0 && (
           <Box sx={{ mt: 3 }}>
-            {/* User Selection Section */}
-            <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
-              User Selection
-            </Typography>
-            <Grid container spacing={2} sx={{ mb: 4 }}>
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth>
-                  <InputLabel id="user-select-label">Select User</InputLabel>
-                  <Select
-                    labelId="user-select-label"
-                    id="user-select"
-                    value={selectedUser}
-                    label="Select User"
-                    onChange={handleUserChange}
-                    disabled={isProfileLoading}
-                  >
-                    {userProfile && userProfile.userProfiles && userProfile.userProfiles.length > 0 ? (
-                      userProfile.userProfiles.map((user) => (
+           {/* User Selection Section */}
+        <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
+          User Selection
+        </Typography>
+<Grid container spacing={2} sx={{ mb: 4 }}>
+  <Grid item xs={12} md={6}>
+    <FormControl fullWidth>
+      <InputLabel id="user-select-label">Select User</InputLabel>
+      <Select
+        labelId="user-select-label"
+        id="user-select"
+        value={selectedUser}
+        label="Select User"
+        onChange={handleUserChange}
+        disabled={isProfileLoading}
+      >
+        {userProfile && userProfile.userProfiles && userProfile.userProfiles.length > 0 ? (
+          userProfile.userProfiles.map((user) => (
                         <MenuItem key={user.name} value={user.name.toLowerCase()}>
                           {capitalizeFirstLetter(user.name)}
-                        </MenuItem>
-                      ))
-                    ) : (
-                      <>
-                        <MenuItem value="navneet">Navneet</MenuItem>
+            </MenuItem>
+          ))
+        ) : (
+          <>
+            <MenuItem value="navneet">Navneet</MenuItem>
                         <MenuItem value="teghdeep">Teghdeep</MenuItem>
                         <MenuItem value="divyam">Divyam</MenuItem>
                         <MenuItem value="dhananjay">Dhananjay</MenuItem>
@@ -1659,110 +2186,110 @@ function App() {
                         <MenuItem value="avi">Avi</MenuItem>
                         <MenuItem value="komal">Komal</MenuItem>
                         <MenuItem value="pooja">Pooja</MenuItem>
-                        <MenuItem value="other">Other</MenuItem>
-                      </>
-                    )}
-                  </Select>
-                </FormControl>
-              </Grid>
-            </Grid>
+            <MenuItem value="other">Other</MenuItem>
+          </>
+        )}
+      </Select>
+    </FormControl>
+  </Grid>
+</Grid>
 
-            {/* Custom Email Body Section (only shown when "Other" is selected) */}
-            {selectedUser === 'other' && (
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
-                  Custom Email Body
-                </Typography>
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={10}
-                  label="Custom Email Body"
-                  value={customEmailBody}
-                  onChange={handleCustomEmailBodyChange}
-                  variant="outlined"
-                  placeholder="Enter your custom email body HTML here. Start with <body> and end with </body>"
-                  helperText="Start with <body> tag and end with </body> tag. Include all HTML content for the email."
-                />
-              </Box>
-            )}
-
-            {/* Email Credentials Section */}
+        {/* Custom Email Body Section (only shown when "Other" is selected) */}
+        {selectedUser === 'other' && (
+          <Box sx={{ mb: 4 }}>
             <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
-              Email Credentials
+              Custom Email Body
             </Typography>
-            <Grid container spacing={2} sx={{ mb: 4 }}>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Your Email"
-                  name="email"
-                  value={emailCredentials.email}
-                  onChange={handleCredentialsChange}
-                  variant="outlined"
-                  placeholder="your.email@gmail.com"
-                  required
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="App Password"
-                  name="password"
-                  value={emailCredentials.password}
-                  onChange={handleCredentialsChange}
-                  variant="outlined"
-                  type="password"
-                  placeholder="Your Google App Password"
-                  required
-                  helperText="Use Google App Password, not your regular password"
-                />
-              </Grid>
-            </Grid>
+            <TextField
+              fullWidth
+              multiline
+              rows={10}
+              label="Custom Email Body"
+              value={customEmailBody}
+              onChange={handleCustomEmailBodyChange}
+              variant="outlined"
+              placeholder="Enter your custom email body HTML here. Start with <body> and end with </body>"
+              helperText="Start with <body> tag and end with </body> tag. Include all HTML content for the email."
+            />
+          </Box>
+        )}
 
-            {/* Data Input Tabs */}
-            <Box sx={{ mb: 3 }}>
-              <Tabs value={tabValue} onChange={handleTabChange}>
-                <Tab label="Upload CSV" icon={<UploadFileIcon />} iconPosition="start" />
-                <Tab label="Manual Entry" icon={<AddIcon />} iconPosition="start" />
-              </Tabs>
+        {/* Email Credentials Section */}
+        <Typography variant="h6" component="h2" sx={{ mb: 2 }}>
+          Email Credentials
+        </Typography>
+        <Grid container spacing={2} sx={{ mb: 4 }}>
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              label="Your Email"
+              name="email"
+              value={emailCredentials.email}
+              onChange={handleCredentialsChange}
+              variant="outlined"
+              placeholder="your.email@gmail.com"
+              required
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              label="App Password"
+              name="password"
+              value={emailCredentials.password}
+              onChange={handleCredentialsChange}
+              variant="outlined"
+              type="password"
+              placeholder="Your Google App Password"
+              required
+              helperText="Use Google App Password, not your regular password"
+            />
+          </Grid>
+        </Grid>
+
+        {/* Data Input Tabs */}
+        <Box sx={{ mb: 3 }}>
+          <Tabs value={tabValue} onChange={handleTabChange}>
+            <Tab label="Upload CSV" icon={<UploadFileIcon />} iconPosition="start" />
+            <Tab label="Manual Entry" icon={<AddIcon />} iconPosition="start" />
+          </Tabs>
+        </Box>
+
+        {/* CSV Upload Tab */}
+        <Box sx={{ display: tabValue === 0 ? 'block' : 'none' }}>
+          <Box sx={{ mb: 3, p: 3, border: '2px dashed #ccc', borderRadius: 2, textAlign: 'center' }}>
+            <input
+              accept=".csv,.xlsx,.xls"
+              style={{ display: 'none' }}
+              id="csv-file-upload"
+              type="file"
+              onChange={handleFileChange}
+            />
+            <label htmlFor="csv-file-upload">
+              <Button
+                variant="contained"
+                component="span"
+                startIcon={<UploadFileIcon />}
+              >
+                Upload CSV File
+              </Button>
+            </label>
+            <Box sx={{ mt: 2 }}>
+              {fileName ? (
+                <Typography variant="body1">
+                  Selected file: {fileName}
+                </Typography>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  Supported formats: CSV, XLSX, XLS
+                </Typography>
+              )}
             </Box>
+          </Box>
+        </Box>
 
-            {/* CSV Upload Tab */}
-            <Box sx={{ display: tabValue === 0 ? 'block' : 'none' }}>
-              <Box sx={{ mb: 3, p: 3, border: '2px dashed #ccc', borderRadius: 2, textAlign: 'center' }}>
-                <input
-                  accept=".csv,.xlsx,.xls"
-                  style={{ display: 'none' }}
-                  id="csv-file-upload"
-                  type="file"
-                  onChange={handleFileChange}
-                />
-                <label htmlFor="csv-file-upload">
-                  <Button
-                    variant="contained"
-                    component="span"
-                    startIcon={<UploadFileIcon />}
-                  >
-                    Upload CSV File
-                  </Button>
-                </label>
-                <Box sx={{ mt: 2 }}>
-                  {fileName ? (
-                    <Typography variant="body1">
-                      Selected file: {fileName}
-                    </Typography>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      Supported formats: CSV, XLSX, XLS
-                    </Typography>
-                  )}
-                </Box>
-              </Box>
-            </Box>
-
-            {/* Manual Entry Tab */}
-            <Box sx={{ display: tabValue === 1 ? 'block' : 'none' }}>
+        {/* Manual Entry Tab */}
+        <Box sx={{ display: tabValue === 1 ? 'block' : 'none' }}>
               {/* Mobile View */}
               <Box sx={{ 
                 display: { xs: 'block', md: 'none' },
@@ -1846,83 +2373,83 @@ function App() {
                 overflowX: 'auto'
               }}>
                 <Table sx={{ minWidth: 650 }}>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell>Company</TableCell>
-                      <TableCell>Email</TableCell>
-                      <TableCell>Role</TableCell>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Company</TableCell>
+                  <TableCell>Email</TableCell>
+                  <TableCell>Role</TableCell>
                       <TableCell>Link</TableCell>
-                      <TableCell>Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {manualEntries.map((entry, index) => (
-                      <TableRow key={index}>
-                        <TableCell>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            value={entry.Name}
-                            onChange={(e) => handleManualEntryChange(index, 'Name', e.target.value)}
-                            placeholder="Full Name"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            value={entry.Company}
-                            onChange={(e) => handleManualEntryChange(index, 'Company', e.target.value)}
-                            placeholder="Company Name"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            value={entry.Email}
-                            onChange={(e) => handleManualEntryChange(index, 'Email', e.target.value)}
-                            placeholder="Email Address"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            value={entry.Role}
-                            onChange={(e) => handleManualEntryChange(index, 'Role', e.target.value)}
-                            placeholder="Job Role"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            value={entry.Link}
-                            onChange={(e) => handleManualEntryChange(index, 'Link', e.target.value)}
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {manualEntries.map((entry, index) => (
+                  <TableRow key={index}>
+                    <TableCell>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        value={entry.Name}
+                        onChange={(e) => handleManualEntryChange(index, 'Name', e.target.value)}
+                        placeholder="Full Name"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        value={entry.Company}
+                        onChange={(e) => handleManualEntryChange(index, 'Company', e.target.value)}
+                        placeholder="Company Name"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        value={entry.Email}
+                        onChange={(e) => handleManualEntryChange(index, 'Email', e.target.value)}
+                        placeholder="Email Address"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        value={entry.Role}
+                        onChange={(e) => handleManualEntryChange(index, 'Role', e.target.value)}
+                        placeholder="Job Role"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        value={entry.Link}
+                        onChange={(e) => handleManualEntryChange(index, 'Link', e.target.value)}
                             placeholder="Job Link"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <IconButton 
-                            color="error" 
-                            onClick={() => removeManualEntry(index)}
-                            disabled={manualEntries.length === 1}
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <IconButton 
+                        color="error" 
+                        onClick={() => removeManualEntry(index)}
+                        disabled={manualEntries.length === 1}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
               </Box>
 
-              <Button 
-                variant="outlined" 
-                startIcon={<AddIcon />} 
-                onClick={addManualEntry}
+          <Button 
+            variant="outlined" 
+            startIcon={<AddIcon />} 
+            onClick={addManualEntry}
                 sx={{
                   mt: 2,
                   py: { xs: 1.5, sm: 1 },
@@ -1931,62 +2458,138 @@ function App() {
                 }}
               >
                 Add Entry
-              </Button>
+          </Button>
+        </Box>
+
+        {/* Send Button */}
+        <Box sx={{ mt: 4, textAlign: 'center' }}>
+          <Button
+            variant="contained"
+            color="primary"
+            size="large"
+            startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <EmailIcon />}
+            onClick={handleSendEmails}
+            disabled={isLoading}
+            sx={{ py: 1.5, px: 4 }}
+          >
+            {isLoading ? 'Sending...' : 'Send Emails'}
+          </Button>
+        </Box>
+
+        {/* Progress Section */}
+        {isLoading && (
+              <Box sx={{ 
+                mt: 4,
+                p: 3,
+                bgcolor: '#f8f9fa',
+                borderRadius: 2,
+                border: '1px solid #e0e0e0',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+              }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 3 }}>
+                  <CircularProgress size={20} sx={{ mr: 1.5 }} />
+                  <Typography variant="h6" color="primary">
+                    Email Sending in Progress
+              </Typography>
             </Box>
 
-            {/* Send Button */}
-            <Box sx={{ mt: 4, textAlign: 'center' }}>
-              <Button
-                variant="contained"
-                color="primary"
-                size="large"
-                startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <EmailIcon />}
-                onClick={handleSendEmails}
-                disabled={isLoading}
-                sx={{ py: 1.5, px: 4 }}
-              >
-                {isLoading ? 'Sending...' : 'Send Emails'}
-              </Button>
-            </Box>
-
-            {/* Progress Section */}
-            {isLoading && (
-              <Box sx={{ mt: 4, p: 2, bgcolor: '#f5f5f5', borderRadius: 2 }}>
-                <Typography variant="h6" gutterBottom>
-                  Email Sending Progress
-                </Typography>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                  <Typography variant="body1">
-                    Progress: {emailProgress.current}/{emailProgress.total} 
-                    ({emailProgress.total > 0 ? Math.round((emailProgress.current / emailProgress.total) * 100) : 0}%)
-                  </Typography>
-                  <Typography variant="body1">
-                    Success: {emailProgress.success} | Failed: {emailProgress.failed}
-                  </Typography>
-                </Box>
-                <Box sx={{ width: '100%', mb: 2 }}>
-                  <LinearProgress 
-                    variant="determinate" 
-                    value={emailProgress.total > 0 ? (emailProgress.current / emailProgress.total) * 100 : 0} 
+                {/* Progress Bar and Percentage */}
+                <Box sx={{ position: 'relative', mb: 3 }}>
+              <LinearProgress 
+                variant="determinate" 
+                value={emailProgress.total > 0 ? (emailProgress.current / emailProgress.total) * 100 : 0} 
+                    sx={{ 
+                      height: 10, 
+                      borderRadius: 5,
+                      bgcolor: '#e3f2fd',
+                      '& .MuiLinearProgress-bar': {
+                        borderRadius: 5,
+                        bgcolor: '#2196f3'
+                      }
+                    }}
                   />
+                  <Typography 
+                    variant="body2" 
+                    color="primary"
+                    sx={{ 
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      fontWeight: 'bold',
+                      textShadow: '0 0 4px white'
+                    }}
+                  >
+                    {emailProgress.total > 0 ? Math.round((emailProgress.current / emailProgress.total) * 100) : 0}%
+                  </Typography>
+            </Box>
+
+                {/* Status Counters */}
+                <Box sx={{ 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  gap: 4, 
+                  mb: 3,
+                  '& > div': {
+                    textAlign: 'center',
+                    px: 2,
+                    py: 1,
+                    borderRadius: 1,
+                    minWidth: 120
+                  }
+                }}>
+                  <Box sx={{ bgcolor: '#e8f5e9' }}>
+                    <Typography variant="h6" color="success.main" sx={{ fontWeight: 'bold' }}>
+                      {emailProgress.success}
+                    </Typography>
+                    <Typography variant="body2" color="success.main">
+                      Successful
+                    </Typography>
+                  </Box>
+                  <Box sx={{ bgcolor: '#fbe9e7' }}>
+                    <Typography variant="h6" color="error.main" sx={{ fontWeight: 'bold' }}>
+                      {emailProgress.failed}
+                    </Typography>
+                    <Typography variant="body2" color="error.main">
+                      Failed
+                    </Typography>
+                  </Box>
                 </Box>
-                <Paper 
-                  variant="outlined" 
-                  sx={{ 
-                    p: 1, 
-                    maxHeight: '200px', 
-                    overflow: 'auto', 
-                    bgcolor: '#000', 
-                    color: '#0f0',
-                    fontFamily: 'monospace' 
-                  }}
-                >
-                  {emailProgress.logs.map((log, index) => (
-                    <Typography key={index} variant="body2" component="div" sx={{ fontSize: '0.85rem' }}>
+
+                {/* Progress Counter */}
+                <Typography variant="body1" align="center" sx={{ mb: 2, fontWeight: 500 }}>
+                  Processing: {emailProgress.current} of {emailProgress.total} emails
+                </Typography>
+
+                {/* Log Messages */}
+                <Box sx={{ 
+                  maxHeight: '150px', 
+                  overflow: 'auto',
+                  bgcolor: '#fff',
+                  borderRadius: 1,
+                  p: 2,
+                  border: '1px solid #e0e0e0'
+                }}>
+                  {emailProgress.logs.filter((log, index, self) => 
+                    // Remove duplicate "Starting email sending process" messages
+                    !log.includes('Starting email sending process') || 
+                    self.findIndex(l => l.includes('Starting email sending process')) === index
+                  ).map((log, index) => (
+                    <Typography 
+                      key={index} 
+                      variant="body2" 
+                      sx={{ 
+                        py: 0.5,
+                        color: log.includes('Success') ? 'success.main' : 
+                               log.includes('Failed') ? 'error.main' : 
+                               log.includes('Starting') ? 'primary.main' : 
+                               'text.primary'
+                      }}
+                    >
                       {log}
                     </Typography>
                   ))}
-                </Paper>
+                </Box>
               </Box>
             )}
           </Box>
@@ -2118,7 +2721,7 @@ function App() {
                       label="New Resume Link"
                       value={newResumeLink}
                       onChange={(e) => setNewResumeLink(e.target.value)}
-                      variant="outlined"
+              variant="outlined" 
                       placeholder="@https://drive.google.com/..."
                       helperText="Enter new resume link to update"
                     />
@@ -2140,7 +2743,7 @@ function App() {
                       </Typography>
                       <Paper 
                         elevation={3} 
-                        sx={{ 
+              sx={{ 
                           width: '100%',
                           height: { xs: '500px', sm: '600px', md: '800px' },
                           overflow: 'hidden',
@@ -2269,8 +2872,8 @@ function App() {
                   {/* Template Tabs */}
                   <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
                     <Tabs value={templateTabIndex} onChange={handleTemplateTabChange}>
-                      <Tab label="Current Template" />
-                      <Tab label="Template Library" />
+                      <Tab label="Email Template" />
+                      <Tab label="Follow-up Template" />
                     </Tabs>
                   </Box>
 
@@ -2306,12 +2909,12 @@ function App() {
                               bgcolor: '#ffffff',
                               p: 1,
                               borderRadius: 0.5,
-                              maxHeight: '200px',
+                maxHeight: '200px', 
                               overflow: 'auto'
-                            }}
-                          >
+              }}
+            >
                             {currentTemplate}
-                          </Typography>
+                </Typography>
                         ) : (
                           <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                             No template set
@@ -2368,80 +2971,76 @@ function App() {
                             <div dangerouslySetInnerHTML={{ 
                               __html: getPreviewTemplate(currentTemplate) 
                             }} />
-                          </Paper>
-                        </Box>
-                      )}
-                    </Box>
-                  )}
+            </Paper>
+          </Box>
+        )}
+          </Box>
+        )}
 
-                  {/* Template Library Tab */}
+                  {/* Follow-up Template Tab */}
                   {templateTabIndex === 1 && (
                     <Box>
                       <Typography variant="h6" component="h3" sx={{ mb: 2 }}>
-                        Template Library
+                        Follow-up Template
                       </Typography>
                       
                       <FormControl fullWidth sx={{ mb: 2 }}>
-                        <InputLabel>Select Template Style</InputLabel>
+                        <InputLabel>Select User Profile</InputLabel>
                         <Select
-                          value={selectedTemplateId}
-                          label="Select Template Style"
-                          onChange={(e) => handleTemplateSelect(e.target.value)}
+                          value={selectedUser}
+                          onChange={handleUserChange}
+                          label="Select User Profile"
                         >
-                          {/* Move OG Template to the top of the list */}
-                          <MenuItem value="og">
-                            <Box sx={{ 
-                              display: 'flex', 
-                              alignItems: 'center',
-                              gap: 1
-                            }}>
-                              <span style={{ color: '#2c3e50' }}>★</span>
-                              OG Template (Navneet's Style)
-                            </Box>
-                          </MenuItem>
-                          <Divider sx={{ my: 1 }} />
-                          {Object.entries(templateLibrary)
-                            .filter(([id]) => id !== 'og')
-                            .map(([id, template]) => (
-                              <MenuItem key={id} value={id}>
-                                {template.name}
-                              </MenuItem>
-                          ))}
+                          <MenuItem value="navneet">Navneet</MenuItem>
+                          <MenuItem value="teghdeep">Teghdeep</MenuItem>
+                          <MenuItem value="divyam">Divyam</MenuItem>
+                          <MenuItem value="dhananjay">Dhananjay</MenuItem>
+                          <MenuItem value="akash">Akash</MenuItem>
+                          <MenuItem value="avi">Avi</MenuItem>
+                          <MenuItem value="komal">Komal</MenuItem>
+                          <MenuItem value="pooja">Pooja</MenuItem>
                         </Select>
                       </FormControl>
 
+                      <TextField
+                        fullWidth
+                        multiline
+                        rows={10}
+                        label="Follow-up Template"
+                        value={followUpTemplate}
+                        onChange={(e) => setFollowUpTemplate(e.target.value)}
+                        sx={{ mb: 2 }}
+                      />
+
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="subtitle1" gutterBottom>
+                          Template Preview
+                        </Typography>
+                        <Paper 
+                          variant="outlined" 
+                          sx={{ 
+                            p: 2,
+                            minHeight: '200px',
+                            maxHeight: '400px',
+                            overflow: 'auto',
+                            bgcolor: '#f5f5f5'
+                          }}
+                        >
+                          <div dangerouslySetInnerHTML={{ __html: followUpTemplate }} />
+                        </Paper>
+                      </Box>
+
                       <Button
                         variant="contained"
-                        onClick={handleSetAsMyTemplate}
-                        sx={{ mb: 3 }}
+                        onClick={handleSaveFollowUpTemplate}
+                        disabled={isFollowUpTemplateLoading}
                       >
-                        Apply This Style
+                        {isFollowUpTemplateLoading ? (
+                          <CircularProgress size={24} />
+                        ) : (
+                          'Save Follow-up Template'
+                        )}
                       </Button>
-
-                      {/* Template Preview */}
-                      {previewTemplate && (
-                        <Box sx={{ mt: 4 }}>
-                          <Typography variant="h6" component="h3" sx={{ mb: 2 }}>
-                            Style Preview
-                          </Typography>
-                          <Paper 
-                            elevation={3} 
-                            sx={{ 
-                              width: '100%',
-                              minHeight: { xs: '300px', sm: '400px', md: '500px' },
-                              overflow: 'hidden',
-                              borderRadius: 2,
-                              bgcolor: '#ffffff',
-                              mb: { xs: 4, sm: 2 },
-                              p: 3
-                            }}
-                          >
-                            <div dangerouslySetInnerHTML={{ 
-                              __html: getPreviewTemplate(previewTemplate) 
-                            }} />
-                          </Paper>
-                        </Box>
-                      )}
                     </Box>
                   )}
                 </Box>
@@ -2521,58 +3120,94 @@ function App() {
                 </Box>
 
                 {/* Filter Section */}
-                <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <FormControl sx={{ minWidth: 200 }}>
-                    <InputLabel id="name-filter-label">Filter by Name</InputLabel>
-                    <Select
-                      labelId="name-filter-label"
-                      value={selectedNameFilter}
-                      label="Filter by Name"
-                      onChange={handleNameFilterChange}
-                    >
-                      {nameOptions.map((option) => (
-                        <MenuItem key={option.value} value={option.value}>
-                          {option.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
+                <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <FormControl sx={{ minWidth: 200 }}>
+                      <InputLabel id="name-filter-label">Filter by Name</InputLabel>
+                      <Select
+                        labelId="name-filter-label"
+                        value={selectedNameFilter}
+                        label="Filter by Name"
+                        onChange={handleNameFilterChange}
+                      >
+                        {nameOptions.map((option) => (
+                          <MenuItem key={option.value} value={option.value}>
+                            {option.label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={() => setShowBulkReplyDialog(true)}
+                    startIcon={<ReplyIcon />}
+                  >
+                    Bulk Mark Replies
+                  </Button>
                 </Box>
 
                 <TableContainer component={Paper}>
-                  <Table>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>UserProfile</TableCell>
-                        <TableCell>Name</TableCell>
-                        <TableCell>Company</TableCell>
-                        <TableCell>Email</TableCell>
-                        <TableCell>Role</TableCell>
-                        <TableCell>Link</TableCell>
-                        <TableCell>Status</TableCell>
-                        <TableCell>Created At</TableCell>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>UserProfile</TableCell>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Company</TableCell>
+                    <TableCell>Email</TableCell>
+                    <TableCell>Role</TableCell>
+                    <TableCell>Link</TableCell>
+                    <TableCell>Status</TableCell>
+                        <TableCell>Type</TableCell>
+                    <TableCell>Created At</TableCell>
                         <TableCell>Actions</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
                       {emailAudit?.records ? (
                         getFilteredAndPaginatedRecords(emailAudit.records).paginatedRecords.map((record) => (
                           <TableRow key={record._id || record.name}>
                             <TableCell>{capitalizeFirstLetter(record.userProfile)}</TableCell>
-                            <TableCell>{record.name}</TableCell>
-                            <TableCell>{record.company}</TableCell>
-                            <TableCell>{record.email}</TableCell>
-                            <TableCell>{record.role}</TableCell>
-                            <TableCell>{record.link}</TableCell>
+                      <TableCell>{record.name}</TableCell>
+                      <TableCell>{record.company}</TableCell>
+                      <TableCell>{record.email}</TableCell>
+                      <TableCell>{record.role}</TableCell>
+                      <TableCell>{record.link}</TableCell>
                             <TableCell>
                               <Box sx={{ 
-                                display: 'inline-flex', 
+                                display: 'flex', 
                                 alignItems: 'center',
-                                color: record.status === 'success' ? 'success.main' : 'error.main',
-                                fontWeight: 500
+                                gap: 1
                               }}>
-                                {record.status === 'success' ? '✓' : '✗'} {record.status}
+                                <Box sx={{ 
+                                  display: 'inline-flex', 
+                                  alignItems: 'center',
+                                  color: record.status === 'success' ? 'success.main' : 'error.main',
+                                  fontWeight: 500
+                                }}>
+                                  {record.status === 'success' ? '✓' : '✗'} {record.status}
+                                </Box>
+                                <Checkbox
+                                  checked={record.replyReceived}
+                                  onChange={() => handleToggleReplyReceived(record)}
+                                  color="primary"
+                                  size="small"
+                                  sx={{ ml: 1 }}
+                                />
+                                <Typography variant="caption" color="textSecondary">
+                                  Reply Received
+                                </Typography>
                               </Box>
+                            </TableCell>
+                            <TableCell>
+                              <Typography
+                                variant="body2"
+                                color={record.emailType === 'Follow-up Email' ? 'secondary.main' : 'primary.main'}
+                                sx={{ fontWeight: 500 }}
+                              >
+                                {record.emailType || 'Main Email'}
+                              </Typography>
                             </TableCell>
                             <TableCell>
                               {new Date(record.createdAt).toLocaleString()}
@@ -2592,6 +3227,29 @@ function App() {
                                 >
                                   Resend
                                 </Button>
+                                <Button
+                                  variant="outlined"
+                                  size="small"
+                                  color="secondary"
+                                  onClick={() => {
+                                    setSelectedRecord(record);
+                                    setShowFollowUpDialog(true);
+                                  }}
+                                  disabled={
+                                    record.replyReceived || 
+                                    record.emailType === 'Follow-up Email' ||
+                                    !record.threadId ||
+                                    !record.messageId ||
+                                    !record.emailType
+                                  }
+                                  startIcon={<ReplyIcon />}
+                                  sx={{
+                                    minWidth: 'auto',
+                                    whiteSpace: 'nowrap'
+                                  }}
+                                >
+                                  Follow Up
+                                </Button>
                                 {isDeleteEnabled && (
                                   <IconButton
                                     size="small"
@@ -2603,7 +3261,7 @@ function App() {
                                 )}
                               </Box>
                             </TableCell>
-                          </TableRow>
+                    </TableRow>
                         ))
                       ) : (
                         <TableRow>
@@ -2612,9 +3270,9 @@ function App() {
                           </TableCell>
                         </TableRow>
                       )}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
+                </TableBody>
+              </Table>
+            </TableContainer>
 
                 {/* Pagination */}
                 {emailAudit?.records && (
@@ -2638,8 +3296,8 @@ function App() {
                         showLastButton
                       />
                     </Box>
-                  </Box>
-                )}
+          </Box>
+        )}
               </Box>
             )}
           </Box>
@@ -2664,8 +3322,8 @@ function App() {
 
       {/* Hidden button in top-right corner - Only show on audit page after brocode */}
       {tabIndex === 3 && isAuditUnlocked && (
-        <Box
-          sx={{
+      <Box 
+        sx={{ 
             position: 'fixed',
             top: 0,
             right: 0,
@@ -2763,23 +3421,366 @@ function App() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
-  );
-}
 
-// Missing LinearProgress component
-function LinearProgress({ variant, value }) {
-  return (
-    <Box sx={{ width: '100%', bgcolor: '#e0e0e0', borderRadius: 1, height: 10, overflow: 'hidden' }}>
-      <Box 
-        sx={{ 
-          width: `${value}%`, 
-          bgcolor: 'primary.main', 
-          height: '100%',
-          transition: 'width 0.4s ease-in-out'
+      {/* Follow-up Dialog */}
+      <Dialog 
+        open={showFollowUpDialog} 
+        onClose={() => {
+          setShowFollowUpDialog(false);
+          setSelectedRecord(null);
+          setFollowUpEmailCredentials({ email: '', password: '' });
+          setShowAppPasswordHelp(false);
         }}
-      />
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Send Follow-up Email</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Send a follow-up email to {selectedRecord?.name} at {selectedRecord?.company}
+          </Typography>
+          <TextField
+            fullWidth
+            label="Email"
+            type="email"
+            name="email"
+            value={followUpEmailCredentials.email}
+            onChange={(e) => setFollowUpEmailCredentials(prev => ({
+              ...prev,
+              email: e.target.value
+            }))}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            label="App Password"
+            type="password"
+            name="password"
+            value={followUpEmailCredentials.password}
+            onChange={(e) => setFollowUpEmailCredentials(prev => ({
+              ...prev,
+              password: e.target.value
+            }))}
+            helperText={
+              showAppPasswordHelp ? 
+                "Please use an App Password from Google Account settings. Regular password won't work." : 
+                "Use App Password from Google Account"
+            }
+            error={showAppPasswordHelp}
+            sx={{ mb: 2 }}
+          />
+          {showAppPasswordHelp && (
+            <Paper sx={{ p: 2, mb: 2, bgcolor: '#fff3e0' }}>
+              <Typography variant="subtitle2" color="warning.main" gutterBottom>
+                How to generate an App Password:
+              </Typography>
+              <Typography variant="body2" component="div">
+                <ol style={{ margin: 0, paddingLeft: '1.2em' }}>
+                  <li>Go to your Google Account settings</li>
+                  <li>Navigate to Security → 2-Step Verification</li>
+                  <li>Scroll to the bottom and click on "App passwords"</li>
+                  <li>Generate a new App password for "Mail"</li>
+                  <li>Use the 16-character password generated</li>
+                </ol>
+              </Typography>
+              <Button
+                component="a"
+                href="https://myaccount.google.com/apppasswords"
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="outlined"
+                size="small"
+                sx={{ mt: 1 }}
+              >
+                Open Google App Passwords
+              </Button>
+            </Paper>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setShowFollowUpDialog(false);
+            setSelectedRecord(null);
+            setFollowUpEmailCredentials({ email: '', password: '' });
+            setShowAppPasswordHelp(false);
+          }}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={() => handleSendFollowUp(selectedRecord)}
+            variant="contained"
+          >
+            Send Follow-up
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add Bulk Follow-up Button - Only show in All Records tab */}
+      {isAuditUnlocked && tabIndex === 3 && (
+        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            variant="contained"
+            color="secondary"
+            onClick={() => setShowBulkFollowUpDialog(true)}
+            startIcon={<ReplyIcon />}
+          >
+            Bulk Follow-up
+          </Button>
     </Box>
+      )}
+
+      {/* Bulk Follow-up Dialog */}
+      <Dialog 
+        open={showBulkFollowUpDialog} 
+        onClose={() => {
+          setShowBulkFollowUpDialog(false);
+          setFollowUpEmailCredentials({ email: '', password: '' });
+          setFollowUpDateRange({ startDate: '', endDate: '' });
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Send Bulk Follow-up Emails</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Send follow-up emails to all unreplied emails within the selected date range
+          </Typography>
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Select User Profile</InputLabel>
+            <Select
+              value={selectedUser}
+              onChange={handleUserChange}
+              label="Select User Profile"
+            >
+              <MenuItem value="navneet">Navneet</MenuItem>
+              <MenuItem value="teghdeep">Teghdeep</MenuItem>
+              <MenuItem value="divyam">Divyam</MenuItem>
+              <MenuItem value="dhananjay">Dhananjay</MenuItem>
+              <MenuItem value="akash">Akash</MenuItem>
+              <MenuItem value="avi">Avi</MenuItem>
+              <MenuItem value="komal">Komal</MenuItem>
+              <MenuItem value="pooja">Pooja</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            fullWidth
+            label="Email"
+            type="email"
+            name="email"
+            value={followUpEmailCredentials.email}
+            onChange={(e) => setFollowUpEmailCredentials(prev => ({
+              ...prev,
+              email: e.target.value
+            }))}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            label="App Password"
+            type="password"
+            name="password"
+            value={followUpEmailCredentials.password}
+            onChange={(e) => setFollowUpEmailCredentials(prev => ({
+              ...prev,
+              password: e.target.value
+            }))}
+            helperText="Use App Password from Google Account"
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            label="Start Date"
+            type="date"
+            value={followUpDateRange.startDate}
+            onChange={(e) => setFollowUpDateRange(prev => ({
+              ...prev,
+              startDate: e.target.value
+            }))}
+            InputLabelProps={{ shrink: true }}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            label="End Date"
+            type="date"
+            value={followUpDateRange.endDate}
+            onChange={(e) => setFollowUpDateRange(prev => ({
+              ...prev,
+              endDate: e.target.value
+            }))}
+            InputLabelProps={{ shrink: true }}
+          />
+          {isLoading && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body1" color="primary" align="center" sx={{ mb: 2 }}>
+                Email sending in progress...
+              </Typography>
+              <LinearProgress variant="determinate" value={(emailProgress.current / emailProgress.total) * 100} />
+              <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 1 }}>
+                {emailProgress.current}/{emailProgress.total} emails sent
+                ({emailProgress.success} success, {emailProgress.failed} failed)
+              </Typography>
+              <Box sx={{ mt: 1, maxHeight: 100, overflowY: 'auto' }}>
+                {emailProgress.logs.map((log, index) => (
+                  <Typography key={index} variant="caption" display="block" color="text.secondary">
+                    {log}
+                  </Typography>
+                ))}
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setShowBulkFollowUpDialog(false);
+            setFollowUpEmailCredentials({ email: '', password: '' });
+            setFollowUpDateRange({ startDate: '', endDate: '' });
+          }}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSendBulkFollowUp}
+            variant="contained"
+            disabled={isLoading}
+          >
+            {isLoading ? 'Sending...' : 'Send Bulk Follow-ups'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Manual Email Dialog */}
+      <Dialog
+        open={showManualDialog}
+        onClose={() => setShowManualDialog(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Send Manual Emails</DialogTitle>
+        <DialogContent>
+          {/* ... existing form fields ... */}
+          {isLoading && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body1" color="primary" align="center" sx={{ mb: 2 }}>
+                Email sending in progress...
+              </Typography>
+              <LinearProgress variant="determinate" value={(emailProgress.current / emailProgress.total) * 100} />
+              <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 1 }}>
+                {emailProgress.current}/{emailProgress.total} emails sent
+                ({emailProgress.success} success, {emailProgress.failed} failed)
+              </Typography>
+              <Box sx={{ mt: 1, maxHeight: 100, overflowY: 'auto' }}>
+                {emailProgress.logs.map((log, index) => (
+                  <Typography key={index} variant="caption" display="block" color="text.secondary">
+                    {log}
+                  </Typography>
+                ))}
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowManualDialog(false)}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSendEmails}
+            variant="contained"
+            disabled={isLoading}
+          >
+            {isLoading ? 'Sending...' : 'Send Emails'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Bulk Reply Mark Dialog */}
+      <Dialog
+        open={showBulkReplyDialog}
+        onClose={() => setShowBulkReplyDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Mark Replies</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Select users to mark their replies as received
+          </Typography>
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel id="bulk-reply-profile-label">Select Profile</InputLabel>
+            <Select
+              labelId="bulk-reply-profile-label"
+              id="bulk-reply-profile"
+              value={bulkReplyProfile}
+              label="Select Profile"
+              onChange={(e) => setBulkReplyProfile(e.target.value)}
+            >
+              <MenuItem value="all">All Users</MenuItem>
+              <MenuItem value="navneet">Navneet</MenuItem>
+              <MenuItem value="teghdeep">Teghdeep</MenuItem>
+              <MenuItem value="divyam">Divyam</MenuItem>
+              <MenuItem value="dhananjay">Dhananjay</MenuItem>
+              <MenuItem value="akash">Akash</MenuItem>
+              <MenuItem value="avi">Avi</MenuItem>
+              <MenuItem value="komal">Komal</MenuItem>
+              <MenuItem value="pooja">Pooja</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            fullWidth
+            label="Start Date"
+            type="date"
+            value={bulkReplyDateRange.startDate}
+            onChange={(e) => setBulkReplyDateRange(prev => ({
+              ...prev,
+              startDate: e.target.value
+            }))}
+            InputLabelProps={{ shrink: true }}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            label="End Date"
+            type="date"
+            value={bulkReplyDateRange.endDate}
+            onChange={(e) => setBulkReplyDateRange(prev => ({
+              ...prev,
+              endDate: e.target.value
+            }))}
+            InputLabelProps={{ shrink: true }}
+          />
+          {isLoading && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body1" color="primary" align="center" sx={{ mb: 2 }}>
+                Email sending in progress...
+              </Typography>
+              <LinearProgress variant="determinate" value={(emailProgress.current / emailProgress.total) * 100} />
+              <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 1 }}>
+                {emailProgress.current}/{emailProgress.total} emails sent
+                ({emailProgress.success} success, {emailProgress.failed} failed)
+              </Typography>
+              <Box sx={{ mt: 1, maxHeight: 100, overflowY: 'auto' }}>
+                {emailProgress.logs.map((log, index) => (
+                  <Typography key={index} variant="caption" display="block" color="text.secondary">
+                    {log}
+                  </Typography>
+                ))}
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowBulkReplyDialog(false)}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleBulkReplyMark}
+            variant="contained"
+            disabled={isLoading}
+          >
+            {isLoading ? 'Marking...' : 'Mark Replies'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Container>
   );
 }
 

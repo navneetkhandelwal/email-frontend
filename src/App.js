@@ -1597,7 +1597,27 @@ function App() {
         </Box>
 
         {/* Tabs Navigation */}
-        <Tabs value={tabIndex} onChange={handleTabIndexChange} indicatorColor="primary" textColor="primary">
+        <Tabs 
+          value={tabIndex} 
+          onChange={handleTabIndexChange} 
+          indicatorColor="primary" 
+          textColor="primary"
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
+          sx={{
+            borderBottom: 1,
+            borderColor: 'divider',
+            '& .MuiTabs-scrollButtons.Mui-disabled': {
+              opacity: 0.3,
+            },
+            '& .MuiTab-root': {
+              minWidth: { xs: '120px', sm: '160px' },
+              fontSize: { xs: '14px', sm: '16px' },
+              py: { xs: 1, sm: 1.5 }
+            }
+          }}
+        >
           <Tab label="User Selection" />
           <Tab label="Resume Management" />
           <Tab label="Template Management" />

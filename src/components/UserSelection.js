@@ -202,7 +202,11 @@ const UserSelection = () => {
             }
 
             console.log('Setting up SSE connection...');
-            eventSource = new EventSource('http://localhost:5001/api/send-emails-sse?email=' + emailCredentials.email);
+            const apiUrl = process.env.NODE_ENV === 'production' 
+            ? 'https://email-backend-tf0l.onrender.com' 
+            : 'http://localhost:5001';
+    
+            const eventSource = new EventSource(`${apiUrl}/api/send-emails-sse?email=${emailCredentials.email}`);
             
             setEmailProgress(prev => ({
                 ...prev,

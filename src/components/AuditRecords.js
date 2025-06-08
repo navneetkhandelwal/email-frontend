@@ -339,8 +339,12 @@ const AuditRecords = () => {
           window.eventSource.close();
         }
 
+        const apiUrl = process.env.NODE_ENV === 'production' 
+            ? 'https://email-backend-tf0l.onrender.com' 
+            : 'http://localhost:5001';
+    
         // Set up SSE connection for progress updates BEFORE sending request
-        window.eventSource = new EventSource('http://localhost:5001/api/send-emails-sse?email=' + followUpEmailCredentials.email);
+        window.eventSource = new EventSource(`${apiUrl}/api/send-emails-sse?email=${followUpEmailCredentials.email}`);
         
         // Initialize progress state
         setEmailProgress({

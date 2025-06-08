@@ -78,27 +78,38 @@ const AuditRecords = () => {
     const [showProfileWarning, setShowProfileWarning] = useState(false);
     const [pendingEmailData, setPendingEmailData] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [userProfiles, setUserProfiles] = useState([]);
 
     const rowsPerPage = 10;
 
-    const nameOptions = [
-      { value: 'all', label: 'All Users' },
-      { value: 'navneet', label: 'Navneet' },
-      { value: 'teghdeep', label: 'Teghdeep' },
-      { value: 'divyam', label: 'Divyam' },
-      { value: 'dhananjay', label: 'Dhananjay' },
-      { value: 'akash', label: 'Akash' },
-      { value: 'avi', label: 'Avi' },
-      { value: 'komal', label: 'Komal' },
-      { value: 'pooja', label: 'Pooja' }
-    ];
+    // Fetch user profiles
+    const fetchUserProfiles = async () => {
+      try {
+        const response = await axiosInstance.get('/api/user-profiles');
+        if (response.data) {
+          setUserProfiles(response.data.userProfiles);
+        }
+      } catch (error) {
+        console.error('Error fetching user profiles:', error);
+        setStatusMessage({ 
+          type: 'error', 
+          message: error.response?.data?.message || 'Error fetching user profiles' 
+        });
+        setOpenSnackbar(true);
+      }
+    };
 
     // Set current user as default filter when component mounts
     useEffect(() => {
-        if (userProfile?.name) {
-            setSelectedNameFilter(userProfile.name.toLowerCase());
-        }
+      if (userProfile?.name) {
+        setSelectedNameFilter(userProfile.name.toLowerCase());
+      }
+      console.log(userProfile);
     }, [userProfile]);
+
+    useEffect(() => {
+      fetchUserProfiles()
+    }, []);
 
     // Fetch email audit records
     const fetchEmailAudit = async () => {
@@ -627,9 +638,10 @@ const AuditRecords = () => {
                     label="Filter by Name"
                     onChange={handleNameFilterChange}
                   >
-                    {nameOptions.map((option) => (
-                      <MenuItem key={option.value} value={option.value}>
-                        {option.label}
+                    <MenuItem value="all">All Users</MenuItem>
+                    {userProfiles.map((profile) => (
+                      <MenuItem key={profile._id} value={profile.name.toLowerCase()}>
+                        {profile.displayName || profile.name}
                       </MenuItem>
                     ))}
                   </Select>
@@ -843,9 +855,10 @@ const AuditRecords = () => {
                 label="Select Profile"
                 onChange={(e) => setBulkReplyProfile(e.target.value)}
               >
-                {nameOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
+                <MenuItem value="all">All Users</MenuItem>
+                {userProfiles.map((profile) => (
+                  <MenuItem key={profile._id} value={profile.name.toLowerCase()}>
+                    {profile.displayName || profile.name}
                   </MenuItem>
                 ))}
               </Select>
@@ -918,9 +931,10 @@ const AuditRecords = () => {
                 onChange={handleNameFilterChange}
                 label="Select User Profile"
               >
-                {nameOptions.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
+                <MenuItem value="all">All Users</MenuItem>
+                {userProfiles.map((profile) => (
+                  <MenuItem key={profile._id} value={profile.name.toLowerCase()}>
+                    {profile.displayName || profile.name}
                   </MenuItem>
                 ))}
               </Select>

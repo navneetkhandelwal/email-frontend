@@ -302,7 +302,7 @@ const AuditRecords = () => {
         }
 
         // Check if email contains profile name
-        if (!followUpEmailCredentials.email.toLowerCase().includes(selectedNameFilter.toLowerCase())) {
+        if (selectedNameFilter.toLowerCase() !== user.name.toLowerCase()) {
           setShowProfileWarning(true);
           setPendingEmailData({
             type: 'bulk',
@@ -480,6 +480,16 @@ const AuditRecords = () => {
             message: 'Email credentials are required' 
           });
           setOpenSnackbar(true);
+          return;
+        }
+
+        // Check if record's profile matches the selected profile
+        if (record.userProfile.toLowerCase() !== userProfile.name.toLowerCase()) {
+          setShowProfileWarning(true);
+          setPendingEmailData({
+            type: 'single',
+            data: record
+          });
           return;
         }
 
